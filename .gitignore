@@ -1,0 +1,39 @@
+# ============================================================
+# .gitignore — Git 추적에서 제외할 파일들
+# ============================================================
+
+# .bak 시스템 (Git 도입 후 점차 폐기 예정이지만 당분간 공존)
+*.bak
+*.before_*.bak
+*.before_split.bak
+
+# 마일스톤 백업 폴더 (Git 히스토리가 대체)
+engine/_milestones/
+engine/_editor_rolledback_*/
+
+# 롤백 아티팩트
+engine/editor.js.before_split.bak
+
+# OS / 에디터
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+
+# Node
+node_modules/
+npm-debug.log
+yarn-error.log
+
+# 로그
+*.log
+
+# 임시 / 테스트
+/tmp/
+__pycache__/
+*.pyc
+
+# 사용자 로컬 설정 (필요 시 형이 추가)
+.env
+.env.local

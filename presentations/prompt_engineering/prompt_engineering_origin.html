@@ -1,0 +1,1030 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>프롬프트 엔지니어링 for 3D 배경 디자이너</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&family=JetBrains+Mono:wght@400;700&family=Noto+Sans+KR:wght@400;700;900&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html,body{width:100%;height:100%;overflow:hidden;font-family:'Noto Sans KR','Inter',sans-serif;background:#000;color:#fff}
+.slide-frame{position:fixed;inset:0;width:100vw;height:100vh;overflow:hidden;background:#000;transition:left .3s,right .3s}
+.slide-deck{position:relative;width:100%;height:100%}
+.slide{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:5vh 5vw;opacity:0;visibility:hidden;pointer-events:none;background:#000;transition:opacity .5s cubic-bezier(.4,0,.2,1),transform .5s cubic-bezier(.4,0,.2,1)}
+.slide.active{opacity:1;visibility:visible;pointer-events:auto;transform:translateX(0)}
+.slide.exit-left{transform:translateX(-100%);opacity:0}
+.slide.exit-right{transform:translateX(100%);opacity:0}
+[data-step]{opacity:0;transform:translateY(18px);pointer-events:none;transition:opacity .45s ease,transform .45s ease}
+[data-animate="fade-right"]{transform:translateX(25px)}
+[data-animate="zoom-in"]{transform:scale(.9)}
+[data-step].visible{opacity:1;transform:translate(0,0) scale(1);pointer-events:auto;transition-delay:calc(var(--stagger,0)*70ms)}
+:root{--g:#3ECF8E;--gl:#5EEAA0;--gd:#2a8f60;--w:#fff;--gr:#888;--grd:#555;--grdd:#333;--bg:#000;--card:#0d0d0d;--surf:#141414;--bdr:#222}
+.slide h1{font-size:clamp(2.6rem,7vw,6rem);font-weight:900;color:var(--w);text-align:center;line-height:1.15;letter-spacing:-.02em}
+.slide h2{font-size:clamp(1.8rem,4.5vw,3.8rem);font-weight:900;color:var(--w);text-align:center;line-height:1.2;letter-spacing:-.02em;margin-bottom:.5em}
+.slide h3{font-size:clamp(1.2rem,2.5vw,2rem);font-weight:700;color:var(--gl);margin-bottom:.3em}
+.slide p,.slide li{font-size:clamp(.85rem,1.5vw,1.15rem);color:var(--gr);line-height:1.85;max-width:680px;text-align:center;word-break:keep-all}
+.slide ul{list-style:none;text-align:left;max-width:680px;width:100%}
+.slide li{padding:.45em 0;padding-left:1.4em;position:relative;text-align:left}
+.slide li::before{content:'>';position:absolute;left:0;color:var(--g);font-family:'JetBrains Mono',monospace;font-weight:700}
+.top-label{font-size:clamp(.7rem,1.1vw,.95rem);color:var(--grd);font-family:'JetBrains Mono',monospace;margin-bottom:1.2em;letter-spacing:.05em}
+.bottom-comment{font-size:clamp(.65rem,1vw,.85rem)!important;color:var(--grd)!important;font-family:'JetBrains Mono',monospace!important;margin-top:1.5em}
+.green{color:var(--g)!important}.gl{color:var(--gl)!important}.white{color:var(--w)!important}
+.slide.part-slide h1{font-size:clamp(4rem,12vw,10rem);color:var(--g);letter-spacing:-.04em}
+.slide.part-slide h2{font-size:clamp(1.2rem,2.5vw,2rem);color:var(--gr);font-weight:400;margin-top:.2em}
+.slide table{max-width:680px;width:100%;border-collapse:collapse;text-align:left;font-size:clamp(.7rem,1.2vw,.95rem)}
+.slide th{color:var(--g);font-weight:700;padding:.5em .8em;border-bottom:2px solid var(--bdr);white-space:nowrap}
+.slide td{color:var(--gr);padding:.5em .8em;border-bottom:1px solid var(--bdr);vertical-align:top}
+.slide tr:last-child td{border-bottom:none}
+.code-block{background:var(--card);border-radius:8px;overflow:hidden;width:100%;max-width:680px;text-align:left;border:1px solid var(--bdr)}
+.code-header{background:var(--surf);color:var(--grd);padding:7px 14px;font-size:clamp(.6rem,1vw,.75rem);font-family:'JetBrains Mono',monospace;display:flex;align-items:center;gap:7px}
+.code-header .dot{width:8px;height:8px;border-radius:50%;display:inline-block}
+.code-header .dot:nth-child(1){background:#ff5f57}.code-header .dot:nth-child(2){background:#febc2e}.code-header .dot:nth-child(3){background:#28c840}
+.code-block pre{margin:0;padding:14px;overflow-x:auto;tab-size:2}
+.code-block code{font-family:'JetBrains Mono',monospace;font-size:clamp(.6rem,1.1vw,.85rem);color:var(--gr);line-height:1.85}
+.code-line{display:block;margin:0 -14px;padding:0 14px}
+.code-line.hl{background:rgba(62,207,142,.08);border-left:3px solid var(--g);padding-left:11px}
+.card{background:var(--card);border:1px solid var(--bdr);border-radius:8px;padding:1.2em 1.6em;max-width:680px;width:100%;text-align:left}
+.card .label{font-size:clamp(.65rem,.9vw,.8rem);color:var(--g);font-family:'JetBrains Mono',monospace;letter-spacing:.1em;margin-bottom:.5em;font-weight:700;text-transform:uppercase}
+.two-col{display:grid;grid-template-columns:1fr 1fr;gap:1em;max-width:680px;width:100%}
+.two-col .col{background:var(--card);border:1px solid var(--bdr);border-radius:8px;padding:1.1em 1.3em}
+.two-col .col h3{font-size:clamp(.85rem,1.3vw,1.05rem);color:var(--g);margin-bottom:.3em;font-weight:700}
+.two-col .col p{font-size:clamp(.75rem,1.1vw,.9rem)!important;text-align:left;max-width:none;color:var(--gr)}
+.tag{display:inline-block;background:rgba(62,207,142,.1);color:var(--g);padding:.12em .5em;border-radius:4px;font-size:.85em;font-family:'JetBrains Mono',monospace}
+.num-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:1em;max-width:680px;width:100%}
+.num-item{text-align:center}
+.num-item .num{font-size:clamp(2rem,4vw,3.5rem);font-weight:900;color:var(--g);font-family:'Inter',sans-serif;line-height:1}
+.num-item .desc{font-size:clamp(.7rem,1vw,.85rem);color:var(--gr);margin-top:.3em}
+.slide-controls{position:absolute;bottom:0;left:0;right:0;z-index:100;pointer-events:none}
+.progress-bar{position:absolute;bottom:0;left:0;width:100%;height:2px;background:rgba(255,255,255,.03)}
+.progress-fill{height:100%;width:0%;background:var(--g);transition:width .4s ease}
+.slide-counter{position:absolute;bottom:14px;right:24px;font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--grd);font-variant-numeric:tabular-nums;user-select:none}
+.speaker-notes{display:none}
+body.show-notes .speaker-notes{display:block;position:fixed;bottom:0;left:0;right:0;height:160px;background:var(--surf);color:var(--gr);padding:14px 24px;font-size:13px;line-height:1.6;overflow-y:auto;border-top:2px solid var(--g);z-index:1000;white-space:pre-wrap}
+.help-hint{position:absolute;bottom:12px;left:24px;font-size:10px;font-family:'JetBrains Mono',monospace;color:rgba(255,255,255,.08);pointer-events:none;z-index:100;user-select:none}
+.flow{display:flex;align-items:center;gap:.6em;max-width:680px;width:100%;justify-content:center;flex-wrap:wrap}
+.flow-step{background:var(--card);border:1px solid var(--bdr);border-radius:8px;padding:.8em 1em;text-align:center;flex:1;min-width:130px}
+.flow-step .step-num{font-size:clamp(.65rem,.9vw,.75rem);color:var(--g);font-family:'JetBrains Mono',monospace;font-weight:700}
+.flow-step .step-title{font-size:clamp(.8rem,1.2vw,1rem);color:var(--w);font-weight:700;margin:.2em 0}
+.flow-step .step-desc{font-size:clamp(.65rem,1vw,.8rem);color:var(--grd)}
+.flow-arrow{color:var(--g);font-size:1.5rem;flex-shrink:0}
+
+/* ================================================================
+   EDITOR MODE — CSS
+   ================================================================ */
+body.editor-mode .slide-frame{left:240px;right:280px;width:auto}
+body.editor-mode .help-hint{display:none}
+body.editor-mode .slide-controls{left:0;right:0}
+body.editor-mode [data-step]{opacity:1!important;transform:none!important;pointer-events:auto!important}
+.ed-guide-169{display:none;position:absolute;border:2px dashed rgba(62,207,142,.35);pointer-events:none;z-index:50;top:50%;left:50%;transform:translate(-50%,-50%)}
+body.editor-mode .ed-guide-169{display:block}
+.ed-guide-label{position:absolute;top:-20px;left:50%;transform:translateX(-50%);font-size:10px;font-family:'JetBrains Mono',monospace;color:rgba(62,207,142,.4);white-space:nowrap}
+.ed-crosshair-h,.ed-crosshair-v{display:none;position:absolute;pointer-events:none;z-index:48}
+.ed-crosshair-h{left:0;right:0;height:1px;top:50%;background:rgba(100,140,255,.18)}
+.ed-crosshair-v{top:0;bottom:0;width:1px;left:50%;background:rgba(100,140,255,.18)}
+body.editor-mode .ed-crosshair-h,body.editor-mode .ed-crosshair-v{display:block}
+.ed-grid{display:none;position:absolute;inset:0;pointer-events:none;z-index:49}
+body.editor-mode.show-grid .ed-grid{display:block}
+.ed-snap-h,.ed-snap-v{position:absolute;z-index:200;pointer-events:none;display:none}
+.ed-snap-h{left:0;right:0;height:1px;background:rgba(255,90,90,.6)}
+.ed-snap-v{top:0;bottom:0;width:1px;background:rgba(90,130,255,.6)}
+.ed-nav{position:fixed;top:0;left:0;width:240px;height:100vh;background:#0a0a0a;border-right:1px solid var(--bdr);z-index:2000;display:none;flex-direction:column;overflow:hidden}
+body.editor-mode .ed-nav{display:flex}
+/* File menu bar — floating top-left of editor area */
+.ed-file-bar{position:fixed;top:6px;left:246px;z-index:2500;display:none;gap:4px;align-items:center}
+body.editor-mode .ed-file-bar{display:flex}
+.ed-file-bar button{padding:5px 12px;background:#111;border:1px solid var(--bdr);border-radius:5px;color:var(--gr);font-size:10px;font-family:'JetBrains Mono',monospace;cursor:pointer;transition:all .15s;white-space:nowrap}
+.ed-file-bar button:hover{background:rgba(62,207,142,.08);border-color:var(--gd);color:var(--w)}
+.ed-file-bar .fb-save{color:var(--g);border-color:var(--gd);background:rgba(62,207,142,.06)}
+.ed-file-bar .fb-save:hover{background:rgba(62,207,142,.15)}
+.ed-file-bar .fb-reset{color:#ff5f57;border-color:rgba(255,95,87,.2)}
+.ed-file-bar .fb-reset:hover{background:rgba(255,95,87,.08);border-color:#ff5f57}
+.ed-file-bar .fb-exit{color:var(--gr);border-color:var(--bdr)}
+.ed-file-bar .fb-exit:hover{background:rgba(255,255,255,.06);color:var(--w)}
+.ed-nav-header{padding:10px 16px;border-bottom:1px solid var(--bdr);display:flex;align-items:center;justify-content:space-between}
+.ed-nav-header h3{font-size:13px;color:var(--g);font-family:'JetBrains Mono',monospace;font-weight:700}
+.ed-nav-close{background:none;border:none;color:var(--grd);font-size:18px;cursor:pointer;padding:2px 6px;border-radius:4px}
+.ed-nav-close:hover{color:var(--w);background:rgba(255,255,255,.06)}
+.ed-nav-list{flex:1;overflow-y:auto;padding:8px 0}
+.ed-nav-list::-webkit-scrollbar{width:4px}
+.ed-nav-list::-webkit-scrollbar-thumb{background:var(--bdr);border-radius:2px}
+.ed-nav-item{display:flex;align-items:center;padding:8px 12px;cursor:pointer;border-left:3px solid transparent;transition:background .15s;position:relative;gap:8px}
+.ed-nav-item:hover{background:rgba(255,255,255,.04)}
+.ed-nav-item.active{background:rgba(62,207,142,.06);border-left-color:var(--g)}
+.ed-nav-item.drag-over{border-top:2px solid var(--g)}
+.ed-nav-num{font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--grd);min-width:22px;text-align:right}
+.ed-nav-item.active .ed-nav-num{color:var(--g)}
+.ed-nav-title{font-size:12px;color:var(--gr);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ed-nav-item.active .ed-nav-title{color:var(--w)}
+.ed-nav-actions{display:none;gap:2px;position:absolute;right:8px}
+.ed-nav-item:hover .ed-nav-actions{display:flex}
+.ed-nav-btn{background:none;border:none;color:var(--grd);font-size:14px;cursor:pointer;padding:2px 5px;border-radius:3px;line-height:1}
+.ed-nav-btn:hover{color:var(--w);background:rgba(255,255,255,.08)}
+.ed-nav-btn.del:hover{color:#ff5f57;background:rgba(255,95,87,.1)}
+.ed-nav-drag{cursor:grab;color:var(--grdd);font-size:12px;user-select:none}
+.ed-panel{position:fixed;top:0;right:0;width:280px;height:100vh;background:#0a0a0a;border-left:1px solid var(--bdr);z-index:2000;display:none;flex-direction:column;overflow-y:auto}
+body.editor-mode .ed-panel{display:flex}
+.ed-panel::-webkit-scrollbar{width:4px}
+.ed-panel::-webkit-scrollbar-thumb{background:var(--bdr);border-radius:2px}
+.ed-section{padding:14px 16px;border-bottom:1px solid var(--bdr)}
+.ed-section-title{font-size:10px;color:var(--grd);font-family:'JetBrains Mono',monospace;letter-spacing:.08em;text-transform:uppercase;margin-bottom:10px;font-weight:700}
+.ed-btn{display:block;width:100%;padding:8px 12px;background:var(--surf);border:1px solid var(--bdr);border-radius:6px;color:var(--gr);font-size:11px;font-family:'Noto Sans KR',sans-serif;cursor:pointer;text-align:left;transition:background .15s;margin-bottom:5px}
+.ed-btn:hover{background:rgba(62,207,142,.06);border-color:var(--gd);color:var(--w)}
+.ed-btn.primary{background:rgba(62,207,142,.1);border-color:var(--gd);color:var(--g)}
+.ed-btn.danger{color:#ff5f57;border-color:rgba(255,95,87,.2)}
+.ed-btn.danger:hover{background:rgba(255,95,87,.08);border-color:#ff5f57}
+.ed-btn-icon{display:inline-block;width:18px;text-align:center;margin-right:5px}
+.ed-templates{display:grid;grid-template-columns:1fr 1fr;gap:5px}
+.ed-tpl-btn{padding:10px 6px;background:var(--surf);border:1px solid var(--bdr);border-radius:6px;color:var(--gr);font-size:10px;cursor:pointer;text-align:center;transition:all .15s}
+.ed-tpl-btn:hover{background:rgba(62,207,142,.06);border-color:var(--gd);color:var(--w)}
+.ed-tpl-btn .icon{font-size:18px;display:block;margin-bottom:3px}
+.ed-align-row{display:flex;gap:4px}
+.ed-align-row button{flex:1;padding:6px;background:var(--surf);border:1px solid var(--bdr);border-radius:4px;color:var(--gr);font-size:11px;cursor:pointer;text-align:center}
+.ed-align-row button:hover{background:rgba(62,207,142,.08);color:var(--w);border-color:var(--gd)}
+.ed-grid-row{display:flex;gap:6px;align-items:center;margin-top:6px}
+.ed-grid-row label{font-size:9px;color:var(--grd);font-family:'JetBrains Mono',monospace;min-width:28px}
+.ed-grid-input{width:44px;background:#111;border:1px solid var(--bdr);color:var(--gr);font-size:10px;padding:3px 5px;border-radius:4px;font-family:'JetBrains Mono',monospace;text-align:center}
+.ed-grid-input:focus{border-color:var(--g);outline:none;color:var(--w)}
+.ed-toolbar{position:fixed;display:none;background:#1a1a1a;border:1px solid var(--bdr);border-radius:10px;z-index:3000;box-shadow:0 12px 40px rgba(0,0,0,.7);flex-direction:column;max-width:520px;user-select:none}
+.ed-toolbar.visible{display:flex}
+.ed-toolbar.minimized .ed-toolbar-body{display:none}
+.ed-toolbar-titlebar{display:flex;align-items:center;justify-content:space-between;padding:5px 8px;cursor:move;background:#151515;border-radius:10px 10px 0 0;border-bottom:1px solid var(--bdr);min-height:26px}
+.ed-toolbar-titlebar span{font-size:9px;color:var(--grd);font-family:'JetBrains Mono',monospace}
+.ed-toolbar-titlebar button{background:none;border:none;color:var(--grd);font-size:13px;cursor:pointer;padding:1px 5px;border-radius:3px;line-height:1}
+.ed-toolbar-titlebar button:hover{color:var(--w);background:rgba(255,255,255,.08)}
+.ed-toolbar-body{padding:8px 10px;display:flex;flex-wrap:wrap;gap:4px;align-items:center}
+.ed-toolbar button.tb{background:none;border:1px solid transparent;color:var(--gr);font-size:12px;cursor:pointer;padding:4px 7px;border-radius:4px;font-family:'JetBrains Mono',monospace;line-height:1;min-width:26px;text-align:center}
+.ed-toolbar button.tb:hover{color:var(--w);background:rgba(255,255,255,.06)}
+.ed-toolbar button.tb.active{color:var(--g);background:rgba(62,207,142,.1);border-color:rgba(62,207,142,.2)}
+.ed-toolbar .sep{width:1px;height:18px;background:var(--bdr);margin:0 3px}
+.ed-toolbar .color-swatch{width:18px;height:18px;border-radius:50%;border:2px solid transparent;cursor:pointer;padding:0}
+.ed-toolbar .color-swatch:hover{border-color:var(--w)}
+.ed-toolbar input[type="color"]{width:22px;height:22px;border:none;background:none;cursor:pointer;padding:0;border-radius:4px}
+.ed-size-select{background:#111;border:1px solid var(--bdr);color:var(--gr);font-size:10px;padding:3px 5px;border-radius:4px;font-family:'JetBrains Mono',monospace}
+.ed-custom-size{width:48px;background:#111;border:1px solid var(--bdr);color:var(--gr);font-size:10px;padding:3px 5px;border-radius:4px;font-family:'JetBrains Mono',monospace;text-align:center}
+.ed-custom-size:focus{border-color:var(--g);outline:none;color:var(--w)}
+.ed-mode-btn{font-size:9px!important;padding:3px 6px!important}
+.ed-mode-btn.active{background:rgba(62,207,142,.15)!important;color:var(--g)!important;border-color:var(--gd)!important}
+/* Palette — improved readability */
+.ed-palette-row{display:flex;gap:4px;align-items:center;width:100%}
+.ed-palette-tab{font-size:11px;padding:4px 10px;border-radius:4px;border:1px solid var(--bdr);background:var(--surf);color:var(--gr);cursor:pointer;font-family:'Noto Sans KR',sans-serif;display:flex;align-items:center;gap:4px}
+.ed-palette-tab::before{content:'';width:8px;height:8px;border-radius:50%;flex-shrink:0}
+.ed-palette-tab[data-pal="green"]::before{background:#3ECF8E}
+.ed-palette-tab[data-pal="gold"]::before{background:#D4A843}
+.ed-palette-tab[data-pal="pink"]::before{background:#E05C8A}
+.ed-palette-tab[data-pal="custom"]::before{background:conic-gradient(#f00,#ff0,#0f0,#0ff,#00f,#f0f,#f00);width:8px;height:8px}
+.ed-palette-tab:hover,.ed-palette-tab.active{border-color:var(--gd);color:var(--w);background:rgba(62,207,142,.1)}
+.ed-palette-swatches{display:flex;gap:5px;align-items:center;flex-wrap:wrap;width:100%;margin-top:4px}
+.ed-toolbar .color-swatch{width:24px;height:24px;border-radius:50%;border:2px solid rgba(255,255,255,.1);cursor:pointer;padding:0;transition:border-color .15s,transform .15s}
+.ed-toolbar .color-swatch:hover{border-color:var(--w);transform:scale(1.15)}
+.ed-palette-add{width:24px;height:24px;border-radius:50%;border:2px dashed var(--grd);background:none;color:var(--grd);font-size:16px;cursor:pointer;display:flex;align-items:center;justify-content:center;line-height:1;padding:0;transition:all .15s}
+.ed-palette-add:hover{border-color:var(--g);color:var(--g);transform:scale(1.15)}
+.ed-gradient-bar{width:100%;height:20px;border-radius:5px;cursor:crosshair;margin-top:6px;border:1px solid var(--bdr);background:linear-gradient(to right,#ff0000,#ff8800,#ffff00,#00ff00,#00ffff,#0000ff,#ff00ff,#ff0000)}
+.ed-palette-actions{display:flex;gap:5px;margin-top:6px;width:100%}
+.ed-palette-actions button{font-size:10px;padding:5px 10px;border-radius:4px;border:1px solid var(--bdr);background:var(--surf);color:var(--gr);cursor:pointer;font-family:'Noto Sans KR',sans-serif;flex:1;text-align:center;transition:all .15s}
+.ed-palette-actions button:hover{border-color:var(--gd);color:var(--w);background:rgba(62,207,142,.06)}
+.ed-spacing-row{display:flex;gap:6px;align-items:center}
+.ed-spacing-row label{font-size:9px;color:var(--grd);font-family:'JetBrains Mono',monospace;min-width:24px}
+.ed-spacing-input{width:46px;background:#111;border:1px solid var(--bdr);color:var(--gr);font-size:10px;padding:3px 5px;border-radius:4px;font-family:'JetBrains Mono',monospace;text-align:center}
+.ed-spacing-input:focus{border-color:var(--g);outline:none;color:var(--w)}
+body.editor-mode .slide.active [contenteditable="true"]{outline:1px dashed rgba(62,207,142,.2);outline-offset:4px;cursor:text;border-radius:3px;min-height:1em;position:relative}
+body.editor-mode .slide.active [contenteditable="true"]:focus{outline-color:var(--g);background:rgba(62,207,142,.02)}
+body.editor-mode .slide.active [contenteditable="true"]:hover{outline-color:rgba(62,207,142,.4)}
+.ed-drag-handle{position:absolute;left:-26px;top:50%;transform:translateY(-50%);width:20px;height:20px;display:none;align-items:center;justify-content:center;cursor:grab;color:var(--grd);font-size:12px;border-radius:3px;z-index:60;user-select:none}
+.ed-drag-handle:hover{color:var(--g);background:rgba(62,207,142,.1)}
+body.editor-mode .slide.active .ed-drag-handle{display:flex}
+.ed-dragging{outline:2px solid var(--g)!important;outline-offset:2px!important;opacity:.7}
+/* Media wrap uses position:absolute to fully exit flex flow — resizing never affects siblings */
+.ed-media-wrap{position:absolute;display:block;isolation:isolate;left:50%;top:50%;transform:translate(-50%,-50%)}
+.ed-media-wrap img,.ed-media-wrap video,.ed-media-wrap iframe{display:block;-webkit-user-drag:none;user-select:none;pointer-events:none}
+body.editor-mode .ed-media-wrap{outline:1px dashed rgba(62,207,142,.15);outline-offset:3px;cursor:move;pointer-events:auto}
+body.editor-mode .ed-media-wrap:hover{outline-color:var(--g)}
+.ed-media-del{position:absolute;top:-10px;right:-10px;width:22px;height:22px;background:#ff5f57;color:#fff;border:none;border-radius:50%;font-size:13px;cursor:pointer;display:none;align-items:center;justify-content:center;line-height:1;z-index:10;pointer-events:auto}
+body.editor-mode .ed-media-wrap:hover .ed-media-del{display:flex}
+.ed-resize-handle{position:absolute;bottom:-6px;right:-6px;width:16px;height:16px;background:var(--g);border:2px solid #1a1a1a;border-radius:50%;cursor:nwse-resize;display:none;z-index:10;pointer-events:auto}
+body.editor-mode .ed-media-wrap:hover .ed-resize-handle{display:block}
+.ed-mode-badge{position:fixed;top:12px;left:50%;transform:translateX(-50%);background:rgba(62,207,142,.12);border:1px solid var(--gd);color:var(--g);font-size:11px;font-family:'JetBrains Mono',monospace;padding:5px 16px;border-radius:20px;z-index:3000;display:none;pointer-events:none}
+body.editor-mode .ed-mode-badge{display:block}
+.ed-toast{position:fixed;bottom:40px;left:50%;transform:translateX(-50%) translateY(20px);background:rgba(62,207,142,.15);border:1px solid var(--gd);color:var(--g);font-size:12px;font-family:'JetBrains Mono',monospace;padding:8px 20px;border-radius:20px;z-index:5000;opacity:0;transition:opacity .3s,transform .3s;pointer-events:none}
+.ed-toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+.ed-confirm{position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:5000;display:flex;align-items:center;justify-content:center}
+.ed-confirm-box{background:#111;border:1px solid var(--bdr);border-radius:10px;padding:24px 28px;max-width:340px;text-align:center}
+.ed-confirm-box p{color:var(--gr);font-size:14px;margin-bottom:18px;max-width:none}
+.ed-confirm-btns{display:flex;gap:10px;justify-content:center}
+.ed-confirm-btns button{padding:8px 20px;border-radius:6px;font-size:13px;cursor:pointer;border:1px solid var(--bdr);font-family:'Noto Sans KR',sans-serif}
+.ed-confirm-btns .cancel{background:var(--surf);color:var(--gr)}
+.ed-confirm-btns .ok{background:rgba(255,95,87,.15);color:#ff5f57;border-color:rgba(255,95,87,.3)}
+</style>
+</head>
+<body>
+<div class="ed-mode-badge">EDITOR — Ctrl+S:Save &nbsp; E:Exit &nbsp; G:Grid</div>
+<div class="ed-file-bar">
+  <button class="fb-save" onclick="EA.save()" title="Ctrl+S">Save</button>
+  <button onclick="EA.saveAs()" title="Ctrl+Shift+S">Save As</button>
+  <button class="fb-reset" onclick="EA.resetAll()">Reset</button>
+  <button class="fb-exit" onclick="EA.toggle()">Edit Mode Out</button>
+</div>
+<nav class="ed-nav">
+  <div class="ed-nav-header"><h3>SLIDES</h3><button class="ed-nav-close" onclick="EA.toggle()">✕</button></div>
+  <div class="ed-nav-list" id="edNavList"></div>
+</nav>
+<aside class="ed-panel">
+  <div class="ed-section"><div class="ed-section-title">슬라이드 추가</div><div class="ed-templates">
+    <button class="ed-tpl-btn" onclick="EA.addSlide('title')"><span class="icon">T</span>제목</button>
+    <button class="ed-tpl-btn" onclick="EA.addSlide('content')"><span class="icon">≡</span>제목+본문</button>
+    <button class="ed-tpl-btn" onclick="EA.addSlide('media')"><span class="icon">▶</span>미디어</button>
+    <button class="ed-tpl-btn" onclick="EA.addSlide('part')"><span class="icon">#</span>파트구분</button>
+  </div></div>
+  <div class="ed-section"><div class="ed-section-title">미디어 삽입</div>
+    <button class="ed-btn" onclick="EA.insertImage()"><span class="ed-btn-icon">🖼</span>이미지 (파일)</button>
+    <button class="ed-btn" onclick="EA.insertImageURL()"><span class="ed-btn-icon">🔗</span>이미지 (URL)</button>
+    <button class="ed-btn" onclick="EA.insertVideo()"><span class="ed-btn-icon">🎬</span>영상 (YouTube)</button>
+    <button class="ed-btn" onclick="EA.insertVideoFile()"><span class="ed-btn-icon">📁</span>영상 (파일)</button>
+  </div>
+  <div class="ed-section"><div class="ed-section-title">요소 정렬 (가이드 기준)</div>
+    <div class="ed-align-row"><button onclick="EA.alignEl('left')">← 좌</button><button onclick="EA.alignEl('centerH')">↔ 중앙</button><button onclick="EA.alignEl('right')">우 →</button></div>
+    <div class="ed-align-row" style="margin-top:4px"><button onclick="EA.alignEl('top')">↑ 상</button><button onclick="EA.alignEl('centerV')">↕ 중앙</button><button onclick="EA.alignEl('bottom')">하 ↓</button></div>
+  </div>
+  <div class="ed-section"><div class="ed-section-title">레이어 순서</div><div style="display:flex;gap:5px"><button class="ed-btn" style="flex:1;text-align:center" onclick="EA.zIndex(1)">↑ 앞으로</button><button class="ed-btn" style="flex:1;text-align:center" onclick="EA.zIndex(-1)">↓ 뒤로</button></div></div>
+  <div class="ed-section"><div class="ed-section-title">슬라이드 배경색</div><div style="display:flex;gap:6px;align-items:center"><input type="color" id="edSlideBg" value="#000000" onchange="EA.setSlideBg(this.value)" style="width:28px;height:28px;border:none;background:none;cursor:pointer"><button class="ed-btn" style="flex:1;text-align:center" onclick="EA.setSlideBg('#000000')">기본(검정)</button></div></div>
+  <div class="ed-section"><div class="ed-section-title">Grid 설정</div>
+    <div class="ed-grid-row"><label>간격</label><input class="ed-grid-input" id="edGridSize" value="50" onchange="EA.updateGrid()"><label>px</label></div>
+    <div class="ed-grid-row"><label>색상</label><input type="color" id="edGridColor" value="#3ECF8E" onchange="EA.updateGrid()" style="width:24px;height:24px;border:none;background:none;cursor:pointer"></div>
+    <div class="ed-grid-row"><label>투명</label><input type="range" id="edGridAlpha" min="1" max="30" value="6" oninput="EA.updateGrid()" style="flex:1;cursor:pointer"><span id="edGridAlphaVal" style="font-size:9px;color:var(--grd);min-width:24px">6%</span></div>
+  </div>
+  <div class="ed-section"><div class="ed-section-title">현재 슬라이드</div>
+    <button class="ed-btn" onclick="EA.duplicateSlide()"><span class="ed-btn-icon">⧉</span>복제</button>
+    <button class="ed-btn" onclick="EA.duplicateEl()"><span class="ed-btn-icon">⊕</span>요소 복제 (Ctrl+D)</button>
+    <button class="ed-btn danger" onclick="EA.deleteSlide()"><span class="ed-btn-icon">🗑</span>삭제</button>
+    <button class="ed-btn danger" onclick="EA.resetSlide()"><span class="ed-btn-icon">↺</span>원본 초기화</button>
+  </div>
+  <div class="ed-section"><div class="ed-section-title">실행 취소</div><div style="display:flex;gap:5px"><button class="ed-btn" style="flex:1;text-align:center" onclick="EA.undo()">↩ Undo</button><button class="ed-btn" style="flex:1;text-align:center" onclick="EA.redo()">↪ Redo</button></div></div>
+  <div class="ed-section"><div class="ed-section-title">파일</div>
+    <button class="ed-btn primary" onclick="EA.save()"><span class="ed-btn-icon">💾</span>Save (Ctrl+S)</button>
+    <button class="ed-btn" onclick="EA.saveAs()"><span class="ed-btn-icon">📄</span>Save As (Ctrl+Shift+S)</button>
+    <button class="ed-btn danger" onclick="EA.resetAll()"><span class="ed-btn-icon">↺</span>Reset</button>
+  </div>
+</aside>
+
+<div class="ed-toolbar" id="edToolbar">
+  <div class="ed-toolbar-titlebar" id="edToolbarDrag"><span>TEXT EDITOR</span><div style="display:flex;gap:2px"><button onclick="EA.minimizeToolbar()">−</button><button onclick="EA.closeToolbar()">✕</button></div></div>
+  <div class="ed-toolbar-body" id="edToolbarBody">
+    <button class="tb" onclick="EA.execCmd('bold')"><b>B</b></button><button class="tb" onclick="EA.execCmd('italic')"><i>I</i></button><div class="sep"></div>
+    <button class="tb" onclick="EA.setAlign('left')">◧</button><button class="tb" onclick="EA.setAlign('center')">◫</button><button class="tb" onclick="EA.setAlign('right')">◨</button><div class="sep"></div>
+    <button class="tb ed-mode-btn active" id="edSizeBlock" onclick="EA.setSizeMode('block')">블록</button><button class="tb ed-mode-btn" id="edSizeSel" onclick="EA.setSizeMode('sel')">선택</button>
+    <select class="ed-size-select" onchange="EA.setSize(this.value)"><option value="">크기</option><option value="0.65rem">XS</option><option value="0.85rem">S</option><option value="1.1rem">M</option><option value="1.5rem">L</option><option value="2rem">XL</option><option value="3rem">2XL</option><option value="5rem">3XL</option></select>
+    <input class="ed-custom-size" id="edCustomSize" placeholder="px" onkeydown="if(event.key==='Enter')EA.setSize(this.value)"><div class="sep"></div>
+    <div class="ed-spacing-row"><label>행간</label><input class="ed-spacing-input" id="edLineH" placeholder="1.8" onkeydown="if(event.key==='Enter')EA.setLineHeight(this.value)"></div>
+    <div class="ed-spacing-row"><label>자간</label><input class="ed-spacing-input" id="edLetterS" placeholder="0" onkeydown="if(event.key==='Enter')EA.setLetterSpacing(this.value)"></div><div class="sep"></div>
+    <button class="tb" onclick="EA.zIndex(1)">↑z</button><button class="tb" onclick="EA.zIndex(-1)">↓z</button><div class="sep"></div>
+    <button class="tb" onclick="EA.deleteElement()" style="color:#ff5f57">✕</button>
+    <!-- Palette section -->
+    <div style="width:100%;margin-top:8px">
+      <div class="ed-palette-row" id="edPaletteTabs">
+        <button class="ed-palette-tab active" data-pal="green" onclick="EA.setPalette('green')">Green</button>
+        <button class="ed-palette-tab" data-pal="gold" onclick="EA.setPalette('gold')">Gold</button>
+        <button class="ed-palette-tab" data-pal="pink" onclick="EA.setPalette('pink')">Pink</button>
+        <button class="ed-palette-tab" data-pal="custom" onclick="EA.setPalette('custom')">Custom</button>
+      </div>
+      <div class="ed-palette-swatches" id="edSwatches"></div>
+      <input type="color" id="edColorPicker" value="#3ECF8E" onchange="EA.setColor(this.value)" style="width:28px;height:28px;border:none;background:none;cursor:pointer;border-radius:50%">
+      <div class="ed-gradient-bar" id="edGradientBar"></div>
+      <div class="ed-palette-actions">
+        <button onclick="EA.savePaletteFile()">Save .plt</button>
+        <button onclick="EA.loadPaletteFile()">Load .plt</button>
+      </div>
+    </div>
+  </div>
+</div>
+<div class="ed-toast" id="edToast"></div>
+<input type="file" id="edFileImg" accept="image/*" style="display:none">
+<input type="file" id="edFileVid" accept="video/*" style="display:none">
+<input type="file" id="edFilePlt" accept=".plt,.json" style="display:none">
+
+<div class="slide-frame">
+<main class="slide-deck" role="region" aria-label="프레젠테이션">
+<!-- 01 --><section class="slide" data-slide="0"><p class="top-label" data-step="1">> 3D 배경 디자이너를 위한 실전 가이드</p><h1 data-step="2" data-animate="zoom-in"><span class="green">프롬프트</span><br>엔지니어링</h1><p class="bottom-comment" data-step="3">// AI 레퍼런스 이미지, 제대로 뽑는 법 — 2026.04</p><aside class="speaker-notes">가벼운 인사 후 바로 시작.</aside></section>
+<!-- 02 --><section class="slide" data-slide="1"><p class="top-label" data-step="1">> 현실</p><h2 data-step="2">레퍼런스 수집,<br>지금 <span class="green">어떻게</span> 하고 계세요?</h2><ul data-step="3"><li>Pinterest / ArtStation / Google 이미지 검색</li><li>원하는 분위기의 이미지를 찾을 때까지 스크롤</li><li>PureRef에 정리</li><li><span class="green">그래도 "딱 이 느낌"인 이미지는 없음</span></li></ul><aside class="speaker-notes">청중 공감.</aside></section>
+<!-- 03 --><section class="slide" data-slide="2"><p class="top-label" data-step="1">> 2026년 현주소</p><h2 data-step="2">AI 이미지 생성의<br><span class="green">현주소</span></h2><div class="num-grid" data-step="3"><div class="num-item"><div class="num">50%</div><div class="desc">게임 스튜디오<br>AI 파이프라인 통합</div></div><div class="num-item"><div class="num">40%</div><div class="desc">에셋 제작 시간<br>단축</div></div><div class="num-item"><div class="num">20%</div><div class="desc">아트 에셋 비용<br>절감</div></div></div><p data-step="4" style="margin-top:1em"><span class="green">AI는 레퍼런스 생성 + 방향성 탐색</span>을 가속하는 도구</p><aside class="speaker-notes"></aside></section>
+<!-- 04 --><section class="slide part-slide" data-slide="3"><h1 data-step="1" data-animate="zoom-in">01</h1><h2 data-step="2">이미지 생성 AI 지형도</h2></section>
+<!-- 05 --><section class="slide" data-slide="4"><h2>도구별 <span class="green">특성</span> 비교</h2><table data-step="1"><tr><th>도구</th><th>강점</th><th>프롬프트 스타일</th></tr><tr><td><span class="green">Nano Banana 2</span></td><td>4K, 레퍼런스 14장 입력</td><td>자연어 대화형</td></tr><tr><td><span class="green">Grok Imagine</span></td><td>드라마틱 라이팅, Speed/Quality</td><td>구체적 묘사형</td></tr><tr><td><span class="green">Midjourney V7</span></td><td>예술적 완성도 최고</td><td>짧은 키워드</td></tr><tr><td><span class="green">ChatGPT (GPT-5)</span></td><td>대화형 반복 수정</td><td>문단형 서술</td></tr><tr><td><span class="green">Flux 2</span></td><td>포토리얼, 정밀한 팔로잉</td><td>자연어 문장형</td></tr></table><aside class="speaker-notes"></aside></section>
+<!-- 06 --><section class="slide" data-slide="5"><p class="top-label" data-step="1">> Nano Banana 2 (Gemini)</p><h2 data-step="2">레퍼런스 이미지<br><span class="green">14장</span>까지 입력</h2><ul data-step="3"><li><strong class="green">스타일 전이</strong> — 기존 컨셉아트 입력 → 통일된 변형 생성</li><li><strong class="gl">4K 해상도</strong> — 디테일 확인에 충분</li><li><strong class="green">대화형 편집</strong> — "여기 좀 더 어둡게", "안개 추가해줘"</li></ul><aside class="speaker-notes"></aside></section>
+<!-- 07 --><section class="slide" data-slide="6"><p class="top-label" data-step="1">> Grok Imagine</p><h2 data-step="2">컨셉 탐색에<br><span class="green">최적화</span>된 도구</h2><div class="two-col" data-step="3"><div class="col"><h3>Speed 모드</h3><p>20~30개 변형 빠르게 생성.</p></div><div class="col"><h3>Quality 모드</h3><p>고품질 4장 생성.</p></div></div><aside class="speaker-notes"></aside></section>
+<!-- 08 --><section class="slide part-slide" data-slide="7"><h1 data-step="1" data-animate="zoom-in">02</h1><h2 data-step="2">컨텍스트(맥락)</h2><p class="bottom-comment" data-step="3">// 프롬프트의 핵심</p></section>
+<!-- 09 --><section class="slide" data-slide="8"><p class="top-label" data-step="1">> 같은 단어, 다른 그림</p><h2 data-step="2"><span class="green">맥락</span>이<br>결과를 결정한다</h2><ul data-step="3"><li>"abandoned castle" → 서양 중세? 일본 성? 판타지?</li><li>낮? 밤? 새벽? 멀리서? 내부? 문 앞?</li><li><strong class="green">AI는 모호함을 "평균"으로 처리한다</strong></li><li>구체적 맥락 = 원하는 결과의 유일한 방법</li></ul><aside class="speaker-notes"></aside></section>
+<!-- 10 --><section class="slide" data-slide="9"><h2><span class="green">6가지</span> 맥락 레이어</h2><table data-step="1"><tr><th>레이어</th><th>설명</th><th>예시</th></tr><tr><td class="green">공간</td><td>어떤 장소</td><td>Gothic cathedral, volcanic cave</td></tr><tr><td class="green">시대</td><td>언제, 어떤 세계</td><td>post-apocalyptic 2300s</td></tr><tr><td class="green">라이팅</td><td>빛의 방향, 색온도</td><td>golden hour side lighting</td></tr><tr><td class="green">카메라</td><td>시점과 화각</td><td>wide-angle establishing shot</td></tr><tr><td class="green">재질</td><td>표면의 물성</td><td>moss-covered weathered stone</td></tr><tr><td class="green">분위기</td><td>전달하려는 무드</td><td>ominous and foreboding</td></tr></table><aside class="speaker-notes"></aside></section>
+<!-- 11 --><section class="slide" data-slide="10"><h2>프롬프트 <span class="green">Before</span> / After</h2><div class="two-col"><div class="col" data-step="1"><h3 style="color:#ff5f57">Before</h3><p style="font-family:'JetBrains Mono',monospace;font-size:clamp(.75rem,1.1vw,.9rem)!important;color:var(--grd)">fantasy dungeon</p><p style="margin-top:.5em">일반적. 방향성 없음.</p></div><div class="col" data-step="2"><h3>After</h3><p style="font-family:'JetBrains Mono',monospace;font-size:clamp(.65rem,.95vw,.8rem)!important;color:var(--gr)">underground crystal cavern, massive geode formations, faint purple bioluminescence, wide-angle from entrance, volumetric fog...</p><p style="margin-top:.5em"><span class="green">3D 모델링 가이드가 되는 레퍼런스</span></p></div></div><aside class="speaker-notes"></aside></section>
+<!-- 12 --><section class="slide part-slide" data-slide="11"><h1 data-step="1" data-animate="zoom-in">03</h1><h2 data-step="2">핵심 키워드 마스터</h2></section>
+<!-- 13 --><section class="slide" data-slide="12"><p class="top-label" data-step="1">> 공식</p><h2 data-step="2"><span class="green">Subject</span> → Description → Style</h2><div class="code-block" data-step="3"><div class="code-header"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span style="margin-left:8px">formula.txt</span></div><pre><code><span class="code-line">[공간 유형], [세계관/시대],</span><span class="code-line hl">[핵심 오브젝트 2~3개],</span><span class="code-line hl">[라이팅 조건],</span><span class="code-line hl">[카메라 앵글 + 렌즈],</span><span class="code-line">[재질감 키워드],</span><span class="code-line">[분위기 형용사],</span><span class="code-line">[렌더 스타일]</span></code></pre></div><aside class="speaker-notes"></aside></section>
+<!-- 14 --><section class="slide" data-slide="13"><h2>키워드 사전 ① <span class="green">환경</span></h2><ul><li data-step="1" data-animate="fade-right"><strong class="green">자연</strong> — volcanic wasteland, frozen tundra, crystal cavern, floating islands</li><li data-step="2" data-animate="fade-right"><strong class="gl">인공</strong> — crumbling Gothic cathedral, abandoned industrial complex, underground bunker</li><li data-step="3" data-animate="fade-right"><strong class="green">복합</strong> — castle ruins reclaimed by forest, sunken city half-submerged in swamp</li></ul><p data-step="4" class="bottom-comment">// 두 개를 섞으면 AI가 독창적인 해석을 내놓는다</p><aside class="speaker-notes"></aside></section>
+<!-- 15 --><section class="slide" data-slide="14"><h2>키워드 사전 ② <span class="green">라이팅</span></h2><ul><li data-step="1" data-animate="fade-right"><strong class="green">시간대</strong> — golden hour, blue hour, harsh midday, overcast diffuse, twilight</li><li data-step="2" data-animate="fade-right"><strong class="gl">광원</strong> — volumetric god rays, bioluminescent glow, campfire warm point light</li><li data-step="3" data-animate="fade-right"><strong class="green">분위기</strong> — dramatic chiaroscuro, neon-lit cyberpunk, candlelit warm interior</li></ul><p data-step="4" class="bottom-comment">// UE4에서 라이트 세팅할 때 생각하는 것들을 영어로 옮기면 된다</p><aside class="speaker-notes"></aside></section>
+<!-- 16 --><section class="slide" data-slide="15"><h2>키워드 사전 ③ <span class="green">카메라</span> & 재질</h2><div class="two-col" data-step="1"><div class="col"><h3>카메라/앵글</h3><p>wide-angle establishing (14mm)<br>bird's eye / top-down<br>low-angle looking up<br>deep / shallow depth of field</p></div><div class="col"><h3>재질/표면</h3><p>weathered stone with moss<br>rusted corroded metal<br>wet cobblestone reflecting light<br>polished obsidian, frosted glass</p></div></div><aside class="speaker-notes"></aside></section>
+<!-- 17 --><section class="slide" data-slide="16"><p class="top-label" data-step="1">> 주의</p><h2 data-step="2">2026년에<br><span class="green">효과 없는</span> 키워드</h2><div class="card" data-step="3"><div class="label">더 이상 안 먹히는 "품질 태그"</div><p style="text-align:left;max-width:none;color:var(--grd);text-decoration:line-through">masterpiece, best quality, highly detailed, 8k, ultra-realistic, trending on ArtStation</p><p style="text-align:left;max-width:none;margin-top:.8em"><span class="green">대안:</span> 구체적 디테일 묘사가 범용 태그보다 훨씬 효과적</p></div><aside class="speaker-notes"></aside></section>
+<!-- 18 --><section class="slide" data-slide="17"><h2><span class="green">네거티브</span> 프롬프트</h2><div class="code-block" data-step="1"><div class="code-header"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span style="margin-left:8px">negative.txt</span></div><pre><code><span class="code-line hl">blurry, low resolution, watermark, text overlay,</span><span class="code-line hl">cartoon style, anime, flat lighting,</span><span class="code-line">oversaturated colors, lens flare,</span><span class="code-line">people in foreground, UI elements</span></code></pre></div><p data-step="2" class="bottom-comment">// 긍정적 묘사에 집중하는 것이 네거티브 의존보다 효과적</p><aside class="speaker-notes"></aside></section>
+<!-- 19 --><section class="slide part-slide" data-slide="18"><h1 data-step="1" data-animate="zoom-in">04</h1><h2 data-step="2">반드시 알아야 할 주의사항</h2></section>
+<!-- 20 --><section class="slide" data-slide="19"><p class="top-label" data-step="1">> 주의사항 ①</p><h2 data-step="2"><span class="green">저작권</span></h2><ul data-step="3"><li><span class="tag">안전</span> 레퍼런스/무드보드 용도로 활용</li><li><span class="tag">안전</span> AI 생성 이미지 기반으로 인간이 수정/재창작</li><li><span class="tag" style="background:rgba(255,95,87,.1);color:#ff5f57">리스크</span> AI 생성물을 최종 게임 에셋으로 직접 사용</li><li><span class="tag" style="background:rgba(255,95,87,.1);color:#ff5f57">금지</span> 특정 아티스트 이름으로 스타일 복제</li></ul><aside class="speaker-notes"></aside></section>
+<!-- 21 --><section class="slide" data-slide="20"><p class="top-label" data-step="1">> 주의사항 ②</p><h2 data-step="2">기술적 <span class="green">정확성</span>의 한계</h2><ul data-step="3"><li><strong class="green">구조적 지지</strong> — 물리적으로 불가능한 건축물</li><li><strong class="gl">비율과 스케일</strong> — 문 크기 불일치</li><li><strong class="green">재질 물리</strong> — 유리가 돌처럼, 금속이 천처럼</li><li><strong class="gl">양식 혼합</strong> — 고딕+아르데코+일본식 무분별 혼합</li></ul><p data-step="4" class="bottom-comment">// AI가 제안하고, 우리가 검증하고 실현한다</p><aside class="speaker-notes"></aside></section>
+<!-- 22 --><section class="slide" data-slide="21"><p class="top-label" data-step="1">> 주의사항 ③</p><h2 data-step="2"><span class="green">일관성</span> 유지의 어려움</h2><ul data-step="3"><li><strong class="green">레퍼런스 이미지 활용</strong> — 이전 결과를 다음 입력으로</li><li><strong class="gl">스타일 가이드 프롬프트</strong> — 색상/재질/라이팅 고정 문구</li><li><strong class="green">시드(Seed) 고정</strong> — 시드 번호 고정하여 변수 최소화</li><li><strong class="gl">프롬프트 템플릿</strong> — 팀 공유 라이브러리 구축</li></ul><aside class="speaker-notes"></aside></section>
+<!-- 23 --><section class="slide part-slide" data-slide="22"><h1 data-step="1" data-animate="zoom-in">05</h1><h2 data-step="2">실전 워크플로우</h2></section>
+<!-- 24 --><section class="slide" data-slide="23"><h2>AI 레퍼런스 <span class="green">4단계</span></h2><div class="flow" data-step="1"><div class="flow-step"><div class="step-num">Step 1</div><div class="step-title">프롬프트 초안</div><div class="step-desc">ChatGPT로 생성</div></div><div class="flow-arrow">→</div><div class="flow-step"><div class="step-num">Step 2</div><div class="step-title">대량 변형</div><div class="step-desc">Speed 모드 20~30개</div></div><div class="flow-arrow">→</div><div class="flow-step"><div class="step-num">Step 3</div><div class="step-title">선별 & 보드</div><div class="step-desc">PureRef 정리</div></div><div class="flow-arrow">→</div><div class="flow-step"><div class="step-num">Step 4</div><div class="step-title">UE4 제작</div><div class="step-desc">블록아웃 참조</div></div></div><aside class="speaker-notes"></aside></section>
+<!-- 25 --><section class="slide" data-slide="24"><p class="top-label" data-step="1">> Step 1</p><h2 data-step="2">ChatGPT로<br><span class="green">프롬프트 초안</span> 생성</h2><div class="code-block" data-step="3"><div class="code-header"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span style="margin-left:8px">prompt.txt</span></div><pre><code><span class="code-line">다음 게임 배경 설정을</span><span class="code-line hl">이미지 생성 AI용 영어 프롬프트로 변환해줘.</span><span class="code-line">스타일은 언리얼 엔진 시네마틱 렌더 느낌으로.</span><span class="code-line"></span><span class="code-line">[설정] 화산 지대 한가운데 위치한 고대 대장간.</span><span class="code-line">용암이 천연 화로 역할을 한다...</span></code></pre></div><aside class="speaker-notes"></aside></section>
+<!-- 26 --><section class="slide" data-slide="25"><p class="top-label" data-step="1">> Step 2</p><h2 data-step="2">대량 <span class="green">변형</span> 생성</h2><ul data-step="3"><li><strong class="green">1라운드 — 구도</strong> — wide / medium / close-up</li><li><strong class="gl">2라운드 — 라이팅</strong> — dawn / midday / dusk / night</li><li><strong class="green">3라운드 — 분위기</strong> — ominous / serene / chaotic</li></ul><p data-step="4" class="bottom-comment">// 한 라운드에 하나의 변수만 바꿔가며 비교하라</p><aside class="speaker-notes"></aside></section>
+<!-- 27 --><section class="slide" data-slide="26"><p class="top-label" data-step="1">> Step 3 ~ 4</p><h2 data-step="2">선별 → <span class="green">UE4</span> 연결</h2><div class="two-col" data-step="3"><div class="col"><h3>Step 3: 보드 구성</h3><p>PureRef에 카테고리별 분류. 팀 리뷰 → 방향성 합의.</p></div><div class="col"><h3>Step 4: UE4 작업</h3><p>블록아웃 → 라이팅 → 머티리얼 방향성.</p></div></div><aside class="speaker-notes"></aside></section>
+<!-- 28 --><section class="slide" data-slide="27"><h2>실전 프롬프트 <span class="green">3종</span></h2><ul><li data-step="1" data-animate="fade-right"><strong class="green">다크 판타지 던전</strong> — vast underground throne room, obsidian pillars, volumetric dust</li><li data-step="2" data-animate="fade-right"><strong class="gl">자연 + 폐허</strong> — ancient aqueduct overgrown with giant roots, misty ravine, golden hour</li><li data-step="3" data-animate="fade-right"><strong class="green">SF 산업 시설</strong> — abandoned space mining facility, harsh directional sunlight, hard sci-fi</li></ul><p data-step="4" class="bottom-comment">// 환경, 라이팅, 분위기 부분만 바꿔도 수십 개 변형 가능</p><aside class="speaker-notes"></aside></section>
+<!-- 29 --><section class="slide" data-slide="28"><p class="top-label" data-step="1">> 프로 팁</p><h2 data-step="2">한 번에<br><span class="green">하나만</span> 바꿔라</h2><table data-step="3"><tr><th>라운드</th><th>변경 요소</th></tr><tr><td class="green">1</td><td>기본 프롬프트로 시작</td></tr><tr><td class="green">2</td><td>라이팅 변경</td></tr><tr><td class="green">3</td><td>카메라 거리</td></tr><tr><td class="green">4</td><td>분위기 변경</td></tr><tr><td class="green">5</td><td>디테일 추가</td></tr></table><aside class="speaker-notes"></aside></section>
+<!-- 30 --><section class="slide" data-slide="29"><h2>팀 차원의<br><span class="green">활용 제안</span></h2><ul><li data-step="1" data-animate="fade-right"><strong class="green">프롬프트 라이브러리</strong> — 프로젝트별 검증된 템플릿 공유</li><li data-step="2" data-animate="fade-right"><strong class="gl">레퍼런스 생성 규칙</strong> — 레퍼런스 용도 한정, AI 태그 표시</li><li data-step="3" data-animate="fade-right"><strong class="green">주간 공유</strong> — 효과적인 프롬프트 + 실패 사례 공유</li></ul><aside class="speaker-notes"></aside></section>
+<!-- 31 --><section class="slide" data-slide="30"><p class="top-label" data-step="1">> 정리</p><h2 data-step="2">핵심 <span class="green">3가지</span></h2><ul data-step="3"><li><strong class="green">AI는 레퍼런스 도구다</strong> — 최종 에셋이 아니라 방향성 탐색의 가속기</li><li><strong class="gl">맥락이 품질을 결정한다</strong> — 공간, 라이팅, 카메라, 재질, 분위기를 구체적으로</li><li><strong class="green">반복이 실력이다</strong> — 한 번에 하나씩 바꾸며 빠르게 수렴</li></ul><p data-step="4" class="bottom-comment">// AI가 제안하고, 우리가 판단하고 실현한다</p><aside class="speaker-notes"></aside></section>
+<!-- 32 --><section class="slide" data-slide="31"><p class="top-label" data-step="1">> Q&A</p><h1 data-step="2" data-animate="zoom-in"><span class="green">질문</span> &<br>실습 안내</h1><p data-step="3" class="bottom-comment">// 프롬프트 예시 3종 중 하나를 골라 직접 생성해보세요</p><aside class="speaker-notes"></aside></section>
+</main>
+<div class="ed-guide-169" id="edGuide169"><span class="ed-guide-label">1920 × 1080 (16:9)</span></div>
+<div class="ed-crosshair-h"></div><div class="ed-crosshair-v"></div>
+<div class="ed-grid" id="edGrid"></div>
+<div class="ed-snap-h" id="edSnapH"></div><div class="ed-snap-v" id="edSnapV"></div>
+<nav class="slide-controls"><div class="progress-bar"><div class="progress-fill"></div></div><div class="slide-counter"><span class="current-num">1</span> / <span class="total-num">32</span></div></nav>
+<div class="help-hint">← → : slide &nbsp; space : step &nbsp; n : notes &nbsp; f : fullscreen &nbsp; e : editor</div>
+</div>
+
+<!-- ============================================================
+     PRESENTATION ENGINE
+     All configurable values are in the CFG object.
+     ============================================================ -->
+<script>
+(()=>{
+'use strict';
+const CFG={TRANSITION_MS:600,TOUCH_TIMEOUT:300,TOUCH_MIN_PX:50};
+let slides,totalSlides;
+const PF=document.querySelector('.progress-fill'),CN=document.querySelector('.current-num'),TN=document.querySelector('.total-num'),CF=document.querySelector('.slide-frame');
+const S={cur:0,step:0,busy:false,info:[]};
+
+function init(){slides=Array.from(document.querySelectorAll('.slide'));totalSlides=slides.length;TN.textContent=totalSlides;S.info=slides.map(s=>{let m=0;s.querySelectorAll('[data-step]').forEach(e=>{const v=+e.dataset.step;if(v>m)m=v});return{max:m}})}
+init();
+function render(){slides.forEach((s,i)=>{s.classList.toggle('active',i===S.cur);s.classList.remove('exit-left','exit-right');s.setAttribute('aria-hidden',i!==S.cur)});reveal();ctrl()}
+function reveal(){const s=slides[S.cur];if(!s)return;s.querySelectorAll('[data-step]').forEach(e=>e.classList.toggle('visible',+e.dataset.step<=S.step))}
+function ctrl(){PF.style.width=(totalSlides>1?(S.cur/(totalSlides-1))*100:100)+'%';CN.textContent=S.cur+1;TN.textContent=totalSlides}
+function go(i,dir){i=Math.max(0,Math.min(i,totalSlides-1));if(i===S.cur||S.busy)return;S.busy=true;const c=slides[S.cur],n=slides[i];c.classList.remove('active');c.classList.add(dir==='next'?'exit-left':'exit-right');n.classList.add('active');n.setAttribute('aria-hidden','false');S.cur=i;S.step=S.info[i].max;reveal();ctrl();setTimeout(()=>{c.classList.remove('exit-left','exit-right');S.busy=false},CFG.TRANSITION_MS)}
+function jump(i){i=Math.max(0,Math.min(i,totalSlides-1));if(i===S.cur)return;slides[S.cur].classList.remove('active');slides[S.cur].setAttribute('aria-hidden','true');S.cur=i;S.step=S.info[i].max;slides[i].classList.add('active');slides[i].setAttribute('aria-hidden','false');reveal();ctrl()}
+function isEd(){return document.body.classList.contains('editor-mode')}
+
+document.addEventListener('keydown',e=>{
+  if(e.target.tagName==='INPUT'||e.target.tagName==='TEXTAREA'||e.target.tagName==='SELECT')return;
+  if((e.key==='e'||e.key==='E')&&!e.ctrlKey&&!e.metaKey){if(e.target.isContentEditable)return;e.preventDefault();EA.toggle();return}
+  if((e.key==='g'||e.key==='G')&&!e.ctrlKey&&isEd()){if(e.target.isContentEditable)return;e.preventDefault();document.body.classList.toggle('show-grid');return}
+  if(isEd()){
+    if(e.key==='PageDown'){e.preventDefault();if(S.cur<totalSlides-1){jump(S.cur+1);EA._sw()}return}
+    if(e.key==='PageUp'){e.preventDefault();if(S.cur>0){jump(S.cur-1);EA._sw()}return}
+    return;
+  }
+  switch(e.key){
+    case'ArrowRight':case'ArrowDown':e.preventDefault();go(S.cur+1,'next');break;
+    case'ArrowLeft':case'ArrowUp':e.preventDefault();go(S.cur-1,'prev');break;
+    case' ':case'PageDown':e.preventDefault();if(S.step<S.info[S.cur].max){S.step++;reveal()}else go(S.cur+1,'next');break;
+    case'PageUp':e.preventDefault();if(S.step>0){S.step--;reveal()}else go(S.cur-1,'prev');break;
+    case'Home':e.preventDefault();go(0,'prev');break;
+    case'End':e.preventDefault();go(totalSlides-1,'next');break;
+    case'f':case'F':if(!document.fullscreenElement)CF.requestFullscreen().catch(()=>{});else document.exitFullscreen();break;
+    case'n':case'N':document.body.classList.toggle('show-notes');break;
+  }
+});
+let tx=0,tt=0;
+CF.addEventListener('touchstart',e=>{if(isEd())return;tx=e.changedTouches[0].clientX;tt=Date.now()},{passive:true});
+CF.addEventListener('touchend',e=>{if(isEd())return;const dx=e.changedTouches[0].clientX-tx;if(Date.now()-tt>CFG.TOUCH_TIMEOUT||Math.abs(dx)<CFG.TOUCH_MIN_PX)return;dx<0?go(S.cur+1,'next'):go(S.cur-1,'prev')},{passive:true});
+
+/* Auto-restore saved edits on page load (before editor opens) */
+try{
+  const saved=localStorage.getItem('ed_save');
+  if(saved){
+    const d=document.querySelector('.slide-deck');
+    d.innerHTML=saved;
+    /* Clean any stale runtime/editor artifacts from saved state */
+    d.querySelectorAll('.slide').forEach(s=>{s.classList.remove('active','exit-left','exit-right');s.removeAttribute('aria-hidden')});
+    d.querySelectorAll('.visible').forEach(e=>e.classList.remove('visible'));
+    d.querySelectorAll('.ed-drag-handle,.ed-media-del,.ed-resize-handle').forEach(e=>e.remove());
+    d.querySelectorAll('[contenteditable]').forEach(e=>e.removeAttribute('contenteditable'));
+    init();/* re-count slides after restore */
+  }
+}catch(e){}
+
+S.cur=0;const hm=location.hash.match(/^#slide-(\d+)$/);if(hm){const n=+hm[1];if(n>=1&&n<=totalSlides)S.cur=n-1}
+S.step=S.info[S.cur].max;render();
+
+window.pAPI={S,go,jump,render,get slides(){return slides},get total(){return totalSlides},
+  reinit(){init();if(S.cur>=totalSlides)S.cur=Math.max(0,totalSlides-1);slides.forEach((s,i)=>s.setAttribute('data-slide',i));S.step=S.info[S.cur]?S.info[S.cur].max:0;render()}
+};
+})();
+</script>
+
+<!-- ============================================================
+     EDITOR ENGINE
+     All configurable values are in the CFG object at the top.
+     Module structure:
+       CFG → State → Palette → Helpers → Guide/Grid →
+       Nav → SlideOps → Editables → DragHandles →
+       Toolbar → MediaWrap → I/O → Undo → Download →
+       Toggle → EventHandlers → PublicAPI
+     ============================================================ -->
+<script>
+(()=>{
+'use strict';
+
+/* ============================================================
+   CONFIGURATION — All magic numbers in one place
+   ============================================================ */
+const CFG={
+  MAX_UNDO:       15,       // undo/redo stack depth
+  SNAP_PX:        8,        // snap-to-guide distance
+  GUIDE_RATIO:    16/9,     // aspect ratio guide
+  GUIDE_SCALE:    0.9,      // guide area = 90% of frame
+  TOAST_MS:       1800,     // toast display duration
+  NAV_TITLE_LEN:  28,       // nav title truncation
+  MAX_CUSTOM_PAL: 9,        // max custom palette colors
+  IMG_DEFAULT_W:  '400px',  // default inserted image width
+  VID_DEFAULT_W:  '640px',  // default inserted video width
+  MEDIA_MIN_W:    60,       // min resize width
+  MEDIA_RADIUS:   '8px',    // border-radius for media
+  NUDGE_SM:       1,        // arrow key move (px)
+  NUDGE_LG:       10,       // shift+arrow key move (px)
+  ZINDEX_STEP:    10,       // z-index increment per click
+  DUP_OFFSET:     20,       // duplicate element offset (px)
+  TB_OFFSET_TOP:  120,      // toolbar distance above element
+  TB_OFFSET_BOT:  20,       // toolbar distance below element
+  TB_HALF_W:      260,      // half toolbar width for centering
+  TB_MIN_LEFT:    250,      // min toolbar left (avoids nav)
+  CSS_SPLIT_MARK: '/* ====',// marker for CSS split on download
+  LS_PALETTE:     'ed_pal', // localStorage key: palette
+  LS_TOOLBAR:     'ed_tb',  // localStorage key: toolbar pos
+  LS_SAVE:        'ed_save',// localStorage key: saved deck HTML
+};
+
+/* ============================================================
+   STATE
+   ============================================================ */
+const undoStack=[],redoStack=[];
+let sel=null, dragIdx=null, sizeMode='block', tbClosed=false;
+const $=id=>document.getElementById(id);
+const toolbar=$('edToolbar'), tbDrag=$('edToolbarDrag'), navList=$('edNavList'), toast=$('edToast');
+const fImg=$('edFileImg'), fVid=$('edFileVid'), deck=document.querySelector('.slide-deck');
+const guide=$('edGuide169'), snapH=$('edSnapH'), snapV=$('edSnapV'), gridEl=$('edGrid');
+const origHTML={};
+document.querySelectorAll('.slide').forEach((s,i)=>origHTML[i]=s.outerHTML);
+
+/* ============================================================
+   PALETTE MODULE
+   ============================================================ */
+const pals={
+  green:[{c:'#3ECF8E'},{c:'#5EEAA0'},{c:'#2a8f60'},{c:'#A8F0D4'},{c:'#1B6B4A'},{c:'#0D2818'}],
+  gold: [{c:'#D4A843'},{c:'#F0CC6B'},{c:'#A67C2E'},{c:'#F5E6B8'},{c:'#8B6914'},{c:'#2A1F0A'}],
+  pink: [{c:'#E05C8A'},{c:'#F07EAA'},{c:'#B03A68'},{c:'#F9B4CF'},{c:'#8C1E4A'},{c:'#2D0A1A'}],
+  custom:[{c:'#3ECF8E'},{c:'#5EEAA0'},{c:'#ffffff'},{c:'#888888'},{c:'#ff5f57'},{c:'#febc2e'}]
+};
+let curPal='green';
+try{const s=localStorage.getItem(CFG.LS_PALETTE);if(s)pals.custom=JSON.parse(s)}catch(e){}
+
+function renderSw(){
+  const c=$('edSwatches');c.innerHTML='';
+  pals[curPal].forEach((p,i)=>{
+    const b=document.createElement('button');b.className='color-swatch';b.style.background=p.c;b.title=p.c;
+    b.onclick=()=>setColor(p.c);
+    b.oncontextmenu=e=>{e.preventDefault();if(curPal==='custom'){const v=prompt('HEX:',p.c);if(v&&/^#[0-9a-fA-F]{3,6}$/.test(v)){pals.custom[i].c=v;renderSw()}}};
+    c.appendChild(b);
+  });
+  if(curPal==='custom'&&pals.custom.length<CFG.MAX_CUSTOM_PAL){
+    const a=document.createElement('button');a.className='ed-palette-add';a.textContent='+';
+    a.onclick=()=>{const p=document.createElement('input');p.type='color';p.value='#ffffff';p.onchange=()=>{pals.custom.push({c:p.value});renderSw()};p.click()};
+    c.appendChild(a);
+  }
+}
+function setPalette(n){curPal=n;document.querySelectorAll('.ed-palette-tab').forEach(t=>t.classList.toggle('active',t.dataset.pal===n));renderSw()}
+function savePalette(){try{localStorage.setItem(CFG.LS_PALETTE,JSON.stringify(pals.custom));msg('팔레트 저장됨')}catch(e){}}
+function loadPalette(){try{const s=localStorage.getItem(CFG.LS_PALETTE);if(s){pals.custom=JSON.parse(s);if(curPal==='custom')renderSw();msg('불러옴')}else msg('없음')}catch(e){}}
+
+/* Save/Load palette as .plt file */
+async function savePaletteFile(){
+  const data=JSON.stringify({name:'custom',colors:pals.custom},null,2);
+  const blob=new Blob([data],{type:'application/json'});
+  if(window.showSaveFilePicker&&location.protocol!=='file:'){
+    try{
+      const h=await window.showSaveFilePicker({suggestedName:'palette.plt',types:[{description:'Palette',accept:{'application/json':['.plt']}}]});
+      const w=await h.createWritable();await w.write(blob);await w.close();msg('Save: '+h.name);return;
+    }catch(e){if(e.name==='AbortError')return}
+  }
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='palette.plt';a.click();
+  setTimeout(()=>URL.revokeObjectURL(a.href),1000);msg('palette.plt 다운로드');
+}
+function loadPaletteFile(){$('edFilePlt').value='';$('edFilePlt').click()}
+$('edFilePlt').addEventListener('change',function(){
+  const f=this.files[0];if(!f)return;
+  const r=new FileReader();
+  r.onload=e=>{
+    try{
+      const d=JSON.parse(e.target.result);
+      if(d.colors&&Array.isArray(d.colors)){
+        pals.custom=d.colors;
+        localStorage.setItem(CFG.LS_PALETTE,JSON.stringify(pals.custom));
+        setPalette('custom');msg('Load: '+f.name);
+      }else msg('잘못된 .plt 형식');
+    }catch(err){msg('파일 읽기 오류')}
+  };
+  r.readAsText(f);
+});
+
+$('edGradientBar').onclick=function(e){
+  const r=this.getBoundingClientRect(),x=(e.clientX-r.left)/r.width;
+  const cv=document.createElement('canvas');cv.width=360;cv.height=1;const ctx=cv.getContext('2d');
+  const g=ctx.createLinearGradient(0,0,360,0);
+  g.addColorStop(0,'#f00');g.addColorStop(.17,'#f80');g.addColorStop(.33,'#ff0');g.addColorStop(.5,'#0f0');g.addColorStop(.67,'#0ff');g.addColorStop(.83,'#00f');g.addColorStop(1,'#f0f');
+  ctx.fillStyle=g;ctx.fillRect(0,0,360,1);
+  const p=ctx.getImageData(Math.round(x*359),0,1,1).data;
+  const h='#'+[p[0],p[1],p[2]].map(v=>v.toString(16).padStart(2,'0')).join('');
+  setColor(h);$('edColorPicker').value=h;
+};
+
+/* ============================================================
+   HELPERS
+   ============================================================ */
+function msg(m){toast.textContent=m;toast.classList.add('show');clearTimeout(toast._t);toast._t=setTimeout(()=>toast.classList.remove('show'),CFG.TOAST_MS)}
+function confirmDlg(m){return new Promise(r=>{const d=document.createElement('div');d.className='ed-confirm';d.innerHTML='<div class="ed-confirm-box"><p>'+m+'</p><div class="ed-confirm-btns"><button class="cancel">취소</button><button class="ok">확인</button></div></div>';document.body.appendChild(d);d.querySelector('.cancel').onclick=()=>{d.remove();r(false)};d.querySelector('.ok').onclick=()=>{d.remove();r(true)}})}
+function push(){undoStack.push(deck.innerHTML);if(undoStack.length>CFG.MAX_UNDO)undoStack.shift();redoStack.length=0}
+function restore(h){deck.innerHTML=h;pAPI.reinit();buildNav();off();if(isEd()){on();upGuide()}}
+function isEd(){return document.body.classList.contains('editor-mode')}
+function curSlide(){return pAPI.slides[pAPI.S.cur]}
+
+/* ============================================================
+   GUIDE / GRID
+   ============================================================ */
+function upGuide(){
+  const f=document.querySelector('.slide-frame'),fw=f.clientWidth,fh=f.clientHeight;
+  let gw,gh;
+  if(fw/fh>CFG.GUIDE_RATIO){gh=fh*CFG.GUIDE_SCALE;gw=gh*CFG.GUIDE_RATIO}else{gw=fw*CFG.GUIDE_SCALE;gh=gw/CFG.GUIDE_RATIO}
+  guide.style.width=gw+'px';guide.style.height=gh+'px';
+  guide._r={x:(fw-gw)/2,y:(fh-gh)/2,w:gw,h:gh};
+}
+function upGrid(){
+  const sz=+$('edGridSize').value||50,col=$('edGridColor').value,a=+$('edGridAlpha').value||6;
+  $('edGridAlphaVal').textContent=a+'%';
+  const rgb=col.match(/[0-9a-f]{2}/gi).map(v=>parseInt(v,16));
+  gridEl.style.backgroundImage=`linear-gradient(rgba(${rgb},${a/100}) 1px,transparent 1px),linear-gradient(90deg,rgba(${rgb},${a/100}) 1px,transparent 1px)`;
+  gridEl.style.backgroundSize=sz+'px '+sz+'px';
+}
+
+/* ============================================================
+   NAVIGATOR
+   ============================================================ */
+function buildNav(){
+  const sl=pAPI.slides;navList.innerHTML='';
+  sl.forEach((s,i)=>{
+    const t=s.querySelector('h1,h2');const title=t?t.textContent.trim().substring(0,CFG.NAV_TITLE_LEN):'(빈)';
+    const it=document.createElement('div');it.className='ed-nav-item'+(i===pAPI.S.cur?' active':'');it.draggable=true;
+    it.innerHTML=`<span class="ed-nav-drag">⠿</span><span class="ed-nav-num">${i+1}</span><span class="ed-nav-title">${title}</span><span class="ed-nav-actions"><button class="ed-nav-btn" onclick="EA.dupAt(${i})">⧉</button><button class="ed-nav-btn del" onclick="EA.delAt(${i})">✕</button></span>`;
+    it.addEventListener('click',e=>{if(e.target.closest('.ed-nav-btn,.ed-nav-drag'))return;pAPI.jump(i);sw()});
+    it.addEventListener('dragstart',e=>{dragIdx=i;e.dataTransfer.effectAllowed='move';it.style.opacity='.4'});
+    it.addEventListener('dragend',()=>{it.style.opacity='';navList.querySelectorAll('.ed-nav-item').forEach(x=>x.classList.remove('drag-over'))});
+    it.addEventListener('dragover',e=>{e.preventDefault();it.classList.add('drag-over')});
+    it.addEventListener('dragleave',()=>it.classList.remove('drag-over'));
+    it.addEventListener('drop',e=>{e.preventDefault();it.classList.remove('drag-over');if(dragIdx===null||dragIdx===i)return;push();const els=Array.from(deck.querySelectorAll('.slide'));const el=els[dragIdx];if(i<dragIdx)els[i].before(el);else els[i].after(el);pAPI.reinit();pAPI.jump(i);sw();msg('순서 변경');dragIdx=null});
+    navList.appendChild(it);
+  });
+}
+function sw(){buildNav();off();on();hideBar();upGuide()}
+
+/* ============================================================
+   SLIDE OPERATIONS
+   ============================================================ */
+const SLIDE_TEMPLATES={
+  title:'<h1 data-step="1">제목</h1><p data-step="2">부제목</p>',
+  content:'<p class="top-label" data-step="1">> 섹션</p><h2 data-step="2">제목</h2><ul data-step="3"><li>내용</li></ul>',
+  media:'<h2 data-step="1">미디어 슬라이드</h2><p data-step="2" style="color:var(--grd)">미디어를 삽입하세요</p>',
+  part:'<h1 data-step="1">00</h1><h2 data-step="2">파트 제목</h2>'
+};
+
+function dupAt(i){push();pAPI.slides[i].after(pAPI.slides[i].cloneNode(true));pAPI.reinit();pAPI.jump(i+1);sw();msg('복제')}
+async function delAt(i){if(pAPI.total<=1)return msg('삭제 불가');if(!await confirmDlg('슬라이드 '+(i+1)+' 삭제?'))return;push();pAPI.slides[i].remove();pAPI.reinit();sw();msg('삭제')}
+function addSlide(type){
+  push();const s=document.createElement('section');s.className='slide';
+  s.innerHTML=SLIDE_TEMPLATES[type]||SLIDE_TEMPLATES.title;
+  if(type==='part')s.classList.add('part-slide');
+  curSlide().after(s);pAPI.reinit();pAPI.jump(pAPI.S.cur+1);sw();msg('추가');
+}
+async function resetSlide(){
+  const i=pAPI.S.cur;if(!origHTML[i])return msg('원본 없음');
+  if(!await confirmDlg('슬라이드 '+(i+1)+' 원본 초기화?'))return;
+  push();const d=document.createElement('div');d.innerHTML=origHTML[i];
+  pAPI.slides[i].replaceWith(d.firstElementChild);pAPI.reinit();sw();msg('초기화');
+}
+
+/* ============================================================
+   EDITABLES
+   ============================================================ */
+function on(){
+  const s=curSlide();if(!s)return;
+  s.querySelectorAll('h1,h2,h3,p,li,td,th').forEach(el=>{
+    if(el.closest('.speaker-notes,.code-block,.ed-media-wrap'))return;
+    if(el.querySelector('h1,h2,h3,ul,table,div'))return;
+    el.contentEditable='true';
+  });
+  attachHandles();
+}
+function off(){
+  document.querySelectorAll('[contenteditable="true"]').forEach(e=>e.removeAttribute('contenteditable'));
+  document.querySelectorAll('.ed-drag-handle').forEach(h=>h.remove());
+}
+
+/* ============================================================
+   DRAG HANDLES — unified for text blocks + media wraps
+   ============================================================ */
+/* Convert px offset to vw/vh % so position is consistent across editor/presentation modes */
+function pxToViewport(el){
+  const slide=el.closest('.slide');if(!slide)return;
+  const sr=slide.getBoundingClientRect();
+  const lPx=parseInt(el.style.left)||0;
+  const tPx=parseInt(el.style.top)||0;
+  if(sr.width>0)el.style.left=(lPx/sr.width*100).toFixed(2)+'%';
+  if(sr.height>0)el.style.top=(tPx/sr.height*100).toFixed(2)+'%';
+}
+
+/* Shared drag logic */
+function startDrag(el,e){
+  push();el.classList.add('ed-dragging');
+  if(!el.classList.contains('ed-media-wrap'))el.style.position='relative';
+  /* For absolute media wraps: convert centering transform to px on first drag */
+  if(el.classList.contains('ed-media-wrap')&&(!el.style.left||el.style.transform==='translate(-50%, -50%)')){
+    const r=el.getBoundingClientRect(),pr=el.parentElement.getBoundingClientRect();
+    el.style.transform='none';el.style.left=Math.round(r.left-pr.left)+'px';el.style.top=Math.round(r.top-pr.top)+'px';
+  }
+  /* Convert existing % to px for dragging (px is needed for mouse delta math) */
+  {const slide=el.closest('.slide');if(slide){const sr=slide.getBoundingClientRect();
+    if(el.style.left&&el.style.left.includes('%'))el.style.left=Math.round(parseFloat(el.style.left)/100*sr.width)+'px';
+    if(el.style.top&&el.style.top.includes('%'))el.style.top=Math.round(parseFloat(el.style.top)/100*sr.height)+'px';
+  }}
+  const oL=parseInt(el.style.left)||0,oT=parseInt(el.style.top)||0;
+  const sX=e.clientX,sY=e.clientY;
+  const rect0=el.getBoundingClientRect(),frame0=document.querySelector('.slide-frame').getBoundingClientRect();
+  const elCxOff=rect0.left-frame0.left+rect0.width/2-oL;
+  const elCyOff=rect0.top-frame0.top+rect0.height/2-oT;
+  const mv=ev=>{
+    let nx=oL+(ev.clientX-sX),ny=oT+(ev.clientY-sY);
+    const gr=guide._r;
+    if(gr){
+      const cx=elCxOff+nx,cy=elCyOff+ny;
+      const gcx=gr.x+gr.w/2,gcy=gr.y+gr.h/2;
+      if(Math.abs(cx-gcx)<CFG.SNAP_PX){snapV.style.left=Math.round(gcx)+'px';snapV.style.display='block';nx+=Math.round(gcx-cx)}else snapV.style.display='none';
+      if(Math.abs(cy-gcy)<CFG.SNAP_PX){snapH.style.top=Math.round(gcy)+'px';snapH.style.display='block';ny+=Math.round(gcy-cy)}else snapH.style.display='none';
+    }
+    el.style.left=Math.round(nx)+'px';el.style.top=Math.round(ny)+'px';
+  };
+  const up=()=>{
+    el.classList.remove('ed-dragging');snapH.style.display='none';snapV.style.display='none';
+    document.removeEventListener('mousemove',mv);document.removeEventListener('mouseup',up);
+    /* Convert to % on drag end — survives mode switch */
+    pxToViewport(el);
+  };
+  document.addEventListener('mousemove',mv);document.addEventListener('mouseup',up);
+}
+
+function attachHandles(){
+  document.querySelectorAll('.ed-drag-handle').forEach(h=>h.remove());
+  const s=curSlide();if(!s)return;
+  const targets=s.querySelectorAll('[data-step], .two-col, .code-block, .card, .num-grid, .flow, table, .ed-media-wrap');
+  targets.forEach(el=>{
+    if(el.closest('.speaker-notes'))return;
+    if(getComputedStyle(el).position==='static')el.style.position='relative';
+    const h=document.createElement('div');h.className='ed-drag-handle';h.textContent='⠿';
+    el.appendChild(h);
+    h.addEventListener('mousedown',e=>{e.preventDefault();e.stopPropagation();startDrag(el,e)});
+  });
+  s.querySelectorAll('img').forEach(img=>{img.draggable=false;img.addEventListener('dragstart',e=>e.preventDefault())});
+}
+
+/* ============================================================
+   TOOLBAR — draggable, minimize, close, position memory
+   ============================================================ */
+let tbPos=null;
+try{const s=localStorage.getItem(CFG.LS_TOOLBAR);if(s)tbPos=JSON.parse(s)}catch(e){}
+
+function showBar(el){
+  if(!el)return;toolbar.classList.remove('minimized');toolbar.classList.add('visible');tbClosed=false;
+  if(tbPos){toolbar.style.left=tbPos.x+'px';toolbar.style.top=tbPos.y+'px'}
+  else{const r=el.getBoundingClientRect();let t=r.top-CFG.TB_OFFSET_TOP,l=r.left+r.width/2-CFG.TB_HALF_W;if(t<10)t=r.bottom+CFG.TB_OFFSET_BOT;toolbar.style.top=Math.max(10,t)+'px';toolbar.style.left=Math.max(CFG.TB_MIN_LEFT,l)+'px'}
+}
+function hideBar(){toolbar.classList.remove('visible');sel=null}
+function closeBar(){toolbar.classList.remove('visible');tbClosed=true;sel=null}
+function minBar(){toolbar.classList.toggle('minimized')}
+
+let tbD=false,tbOx,tbOy;
+tbDrag.addEventListener('mousedown',e=>{if(e.target.tagName==='BUTTON')return;tbD=true;const r=toolbar.getBoundingClientRect();tbOx=e.clientX-r.left;tbOy=e.clientY-r.top;e.preventDefault()});
+document.addEventListener('mousemove',e=>{if(!tbD)return;toolbar.style.left=Math.max(0,e.clientX-tbOx)+'px';toolbar.style.top=Math.max(0,e.clientY-tbOy)+'px'});
+document.addEventListener('mouseup',()=>{if(!tbD)return;tbD=false;tbPos={x:parseInt(toolbar.style.left),y:parseInt(toolbar.style.top)};try{localStorage.setItem(CFG.LS_TOOLBAR,JSON.stringify(tbPos))}catch(e){}});
+
+/* ============================================================
+   MEDIA WRAP — isolated from flex layout
+   ============================================================ */
+function wrapMedia(el){
+  const w=document.createElement('div');w.className='ed-media-wrap';
+  /* position:absolute set by CSS — fully outside flex flow */
+  const d=document.createElement('button');d.className='ed-media-del';d.textContent='✕';
+  d.onclick=()=>{push();w.remove();attachHandles();msg('삭제')};
+  const rh=document.createElement('div');rh.className='ed-resize-handle';
+  rh.addEventListener('mousedown',e=>{
+    e.preventDefault();e.stopPropagation();push();
+    const media=w.querySelector('img,video,iframe');if(!media)return;
+    const sx=e.clientX,sw=media.offsetWidth;
+    const mv=ev=>{
+      const nw=Math.max(CFG.MEDIA_MIN_W,sw+(ev.clientX-sx));
+      media.style.width=nw+'px';
+      media.style.height='auto';
+      /* wrap width is auto-fit by absolute, no need to set */
+    };
+    const up=()=>{document.removeEventListener('mousemove',mv);document.removeEventListener('mouseup',up)};
+    document.addEventListener('mousemove',mv);document.addEventListener('mouseup',up);
+  });
+  w.appendChild(d);w.appendChild(el);w.appendChild(rh);return w;
+}
+function addMedia(m){
+  push();const s=curSlide();const w=wrapMedia(m);
+  /* Insert before speaker-notes or at end of slide */
+  const n=s.querySelector('.speaker-notes');if(n)n.before(w);else s.appendChild(w);
+  /* Position: center of slide by default (CSS transform), user can drag to move */
+  attachHandles();msg('미디어 삽입');
+}
+function mkImg(src){const i=document.createElement('img');i.src=src;i.style.cssText='width:'+CFG.IMG_DEFAULT_W+';height:auto;border-radius:'+CFG.MEDIA_RADIUS;i.draggable=false;return i}
+function mkVid(src){const v=document.createElement('video');v.src=src;v.controls=true;v.style.cssText='width:'+CFG.VID_DEFAULT_W+';border-radius:'+CFG.MEDIA_RADIUS;return v}
+
+/* ============================================================
+   I/O — file, URL, D&D, clipboard
+   ============================================================ */
+/* Use Object URL for media — no base64 bloat. Store original filename for Save As. */
+function fileToURL(file){return URL.createObjectURL(file)}
+
+function insertImage(){fImg.value='';fImg.click()}
+fImg.onchange=()=>{const f=fImg.files[0];if(!f)return;const img=mkImg(fileToURL(f));img.dataset.filename=f.name;addMedia(img)};
+function insertImageURL(){const u=prompt('이미지 URL:');if(u)addMedia(mkImg(u.trim()))}
+function insertVideo(){
+  const u=prompt('YouTube URL:');if(!u)return;
+  const m=u.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([a-zA-Z0-9_-]{11})/);
+  if(!m)return msg('잘못된 URL');
+  const f=document.createElement('iframe');f.src='https://www.youtube.com/embed/'+m[1];
+  f.style.cssText='width:'+CFG.VID_DEFAULT_W+';aspect-ratio:16/9;border:none;border-radius:'+CFG.MEDIA_RADIUS;
+  f.allow='accelerometer;autoplay;clipboard-write;encrypted-media;gyroscope;picture-in-picture';f.allowFullscreen=true;addMedia(f);
+}
+function insertVideoFile(){fVid.value='';fVid.click()}
+fVid.onchange=()=>{const f=fVid.files[0];if(!f)return;const vid=mkVid(fileToURL(f));vid.dataset.filename=f.name;addMedia(vid)};
+
+const sf=document.querySelector('.slide-frame');
+sf.addEventListener('dragover',e=>{if(!isEd())return;e.preventDefault();e.dataTransfer.dropEffect='copy'});
+sf.addEventListener('drop',e=>{
+  if(!isEd())return;e.preventDefault();
+  for(const f of e.dataTransfer.files){
+    if(f.type.startsWith('image/')){const img=mkImg(fileToURL(f));img.dataset.filename=f.name;addMedia(img)}
+    else if(f.type.startsWith('video/')){const vid=mkVid(fileToURL(f));vid.dataset.filename=f.name;addMedia(vid)}
+  }
+});
+document.addEventListener('paste',e=>{
+  if(!isEd())return;const items=e.clipboardData&&e.clipboardData.items;if(!items)return;
+  for(const it of items){
+    if(it.type.startsWith('image/')){
+      e.preventDefault();const f=it.getAsFile();if(!f)continue;
+      const img=mkImg(fileToURL(f));img.dataset.filename=f.name||'clipboard.png';addMedia(img);break;
+    }
+  }
+});
+
+/* ============================================================
+   UNDO / REDO
+   ============================================================ */
+function undo(){if(!undoStack.length)return msg('없음');redoStack.push(deck.innerHTML);restore(undoStack.pop());msg('실행취소')}
+function redo(){if(!redoStack.length)return msg('없음');undoStack.push(deck.innerHTML);restore(redoStack.pop());msg('다시실행')}
+
+/* ============================================================
+   SAVE / SAVE AS / RESET ALL
+   ============================================================ */
+
+
+function save(){
+  try{
+    const clone=deck.cloneNode(true);
+    /* Strip runtime classes/attributes that render() adds */
+    clone.querySelectorAll('.slide').forEach(s=>{
+      s.classList.remove('active','exit-left','exit-right');
+      s.removeAttribute('aria-hidden');
+    });
+    clone.querySelectorAll('.visible').forEach(e=>e.classList.remove('visible'));
+    /* Strip editor artifacts */
+    clone.querySelectorAll('.ed-drag-handle,.ed-media-del,.ed-resize-handle').forEach(e=>e.remove());
+    clone.querySelectorAll('[contenteditable]').forEach(e=>e.removeAttribute('contenteditable'));
+    /* Keep blob URLs in localStorage save — they remain valid within the session.
+       Only saveAs() converts blob→filename for the downloaded file. */
+    localStorage.setItem(CFG.LS_SAVE,clone.innerHTML);
+    msg('Save 완료');
+  }catch(e){msg('Save 실패: '+e.message)}
+}
+
+function loadSaved(){
+  try{
+    const d=localStorage.getItem(CFG.LS_SAVE);
+    if(d){
+      deck.innerHTML=d;
+      /* Clean all runtime/editor artifacts from saved state */
+      deck.querySelectorAll('.slide').forEach(s=>{s.classList.remove('active','exit-left','exit-right');s.removeAttribute('aria-hidden')});
+      deck.querySelectorAll('.visible').forEach(e=>e.classList.remove('visible'));
+      deck.querySelectorAll('.ed-drag-handle,.ed-media-del,.ed-resize-handle').forEach(e=>e.remove());
+      deck.querySelectorAll('[contenteditable]').forEach(e=>e.removeAttribute('contenteditable'));
+      pAPI.reinit();/* reinit re-adds active/visible via render() */
+      return true;
+    }
+  }catch(e){}
+  return false;
+}
+
+async function saveAs(){
+  const cl=document.documentElement.cloneNode(true);
+  /* Remove editor UI */
+  ['.ed-nav','.ed-panel','.ed-toolbar','.ed-toast','.ed-mode-badge','.ed-confirm','.ed-file-bar','#edFileImg','#edFileVid','#edFilePlt','.ed-guide-169','.ed-grid','.ed-snap-h','.ed-snap-v','.ed-crosshair-h','.ed-crosshair-v','.ed-drag-handle','.ed-media-del','.ed-resize-handle'].forEach(s=>cl.querySelectorAll(s).forEach(e=>e.remove()));
+  cl.querySelectorAll('[contenteditable]').forEach(e=>e.removeAttribute('contenteditable'));
+  cl.querySelectorAll('img[draggable]').forEach(e=>e.removeAttribute('draggable'));
+  /* Bake media wrap position + convert blob URLs to filename references */
+  cl.querySelectorAll('.ed-media-wrap').forEach(w=>{
+    w.style.position='absolute';w.style.display='block';
+    w.querySelectorAll('img,video,iframe').forEach(m=>{
+      m.style.pointerEvents='';m.style.display='block';
+      /* Convert blob: URL to relative file path */
+      if(m.src&&m.src.startsWith('blob:')){
+        const fname=m.dataset.filename||'media_file';
+        m.src=fname;/* Reference by filename — user places file alongside HTML */
+        m.removeAttribute('data-filename');
+      }
+    });
+  });
+  cl.querySelector('body').classList.remove('editor-mode','show-grid','show-notes');
+  const scripts=cl.querySelectorAll('script');if(scripts.length>=2)scripts[scripts.length-1].remove();
+  const st=cl.querySelector('style');if(st){const c=st.textContent,idx=c.indexOf(CFG.CSS_SPLIT_MARK);if(idx>-1)st.textContent=c.substring(0,idx)}
+  const fullHTML='<!DOCTYPE html>\n'+cl.outerHTML;
+  const blob=new Blob([fullHTML],{type:'text/html;charset=utf-8'});
+
+  /* Always use download dialog — showSaveFilePicker unreliable on file:// */
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  a.download='prompt_engineering_edited.html';
+  a.click();
+  setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+  msg('Save As 완료 — 미디어 파일을 HTML과 같은 폴더에 배치하세요');
+}
+
+async function resetAll(){
+  if(!await confirmDlg('전체 슬라이드를 원본으로 초기화합니까?\n(모든 편집 내용이 삭제됩니다)'))return;
+  push();
+  try{localStorage.removeItem(CFG.LS_SAVE)}catch(e){}
+  deck.innerHTML='';
+  Object.keys(origHTML).sort((a,b)=>a-b).forEach(k=>{const d=document.createElement('div');d.innerHTML=origHTML[k];deck.appendChild(d.firstElementChild)});
+  pAPI.reinit();sw();msg('Reset 완료');
+}
+
+/* downloadHTML is now handled by saveAs — kept as alias for compatibility */
+function downloadHTML(){saveAs()}
+
+/* ============================================================
+   TOGGLE EDITOR
+   ============================================================ */
+function toggle(){
+  const active=document.body.classList.toggle('editor-mode');
+  if(active){
+    pAPI.S.step=pAPI.S.info[pAPI.S.cur].max;pAPI.render();on();buildNav();upGuide();upGrid();renderSw();tbClosed=false;
+    msg('에디터 ON — Ctrl+S:Save E:Exit G:Grid');}
+  else{
+    /* Exit editor: clean up artifacts but keep inline styles (positions, sizes) */
+    hideBar();document.body.classList.remove('show-grid');
+    /* Remove only editor UI artifacts — NOT inline styles */
+    document.querySelectorAll('.ed-drag-handle').forEach(h=>h.remove());
+    document.querySelectorAll('[contenteditable="true"]').forEach(e=>e.removeAttribute('contenteditable'));
+    /* Force all steps visible so edited content shows */
+    pAPI.S.step=pAPI.S.info[pAPI.S.cur].max;
+    pAPI.render();
+    msg('Edit Mode Out');
+  }
+}
+
+/* ============================================================
+   EVENT HANDLERS
+   ============================================================ */
+/* Click → select element, show toolbar, or drag media directly */
+document.addEventListener('mousedown',e=>{
+  if(!isEd())return;
+  if(e.target.closest('.ed-toolbar,.ed-panel,.ed-nav,.ed-confirm,.ed-drag-handle,.ed-resize-handle,.ed-media-del'))return;
+  const mw=e.target.closest('.ed-media-wrap');
+  if(mw){
+    sel=mw;
+    if(!mw.querySelector('video,iframe'))showBar(mw);
+    /* Direct drag-hold to move — uses shared startDrag */
+    e.preventDefault();
+    startDrag(mw,e);
+    return;
+  }
+  const ed=e.target.closest('[contenteditable="true"]');
+  if(ed){sel=ed;tbClosed=false;showBar(ed);return}
+  hideBar();
+});
+
+/* Format commands */
+function execCmd(c){document.execCommand(c,false,null)}
+function setAlign(d){if(!sel)return;push();sel.style.textAlign=d}
+function setSizeMode(m){sizeMode=m;$('edSizeBlock').classList.toggle('active',m==='block');$('edSizeSel').classList.toggle('active',m==='sel')}
+function setSize(v){
+  if(!v)return;if(!/[a-z%]/i.test(v))v+='px';
+  if(sizeMode==='sel'){
+    const s=window.getSelection();
+    if(s&&s.rangeCount>0&&!s.isCollapsed){const sp=document.createElement('span');sp.style.fontSize=v;const rng=s.getRangeAt(0);sp.appendChild(rng.extractContents());rng.insertNode(sp);s.removeAllRanges();return}
+  }
+  if(sel){push();sel.style.fontSize=v}
+}
+function setColor(c){
+  if(!sel)return;push();
+  const s=window.getSelection();
+  if(s&&s.rangeCount>0&&!s.isCollapsed)document.execCommand('foreColor',false,c);
+  else sel.style.color=c;
+}
+function setLineHeight(v){if(sel&&v){push();sel.style.lineHeight=v}}
+function setLetterSpacing(v){if(sel&&v){push();sel.style.letterSpacing=/[a-z%]/i.test(v)?v:v+'px'}}
+function deleteElement(){if(!sel)return;push();sel.remove();hideBar();msg('삭제')}
+
+function alignEl(dir){
+  if(!sel)return;push();const gr=guide._r;if(!gr)return;
+  const fr=document.querySelector('.slide-frame').getBoundingClientRect(),er=sel.getBoundingClientRect();
+  if(!sel.classList.contains('ed-media-wrap'))sel.style.position='relative';
+  /* Convert % to px before computing alignment offsets */
+  let cl=parseInt(sel.style.left)||0,ct=parseInt(sel.style.top)||0;
+  {const slide=sel.closest('.slide');if(slide){const sr=slide.getBoundingClientRect();
+    if(sel.style.left&&sel.style.left.includes('%'))cl=Math.round(parseFloat(sel.style.left)/100*sr.width);
+    if(sel.style.top&&sel.style.top.includes('%'))ct=Math.round(parseFloat(sel.style.top)/100*sr.height);
+  }}
+  const eL=er.left-fr.left,eT=er.top-fr.top;
+  const map={left:['left',cl+gr.x-eL],right:['left',cl+(gr.x+gr.w)-(eL+er.width)],centerH:['left',cl+(gr.x+gr.w/2)-(eL+er.width/2)],top:['top',ct+gr.y-eT],bottom:['top',ct+(gr.y+gr.h)-(eT+er.height)],centerV:['top',ct+(gr.y+gr.h/2)-(eT+er.height/2)]};
+  const [p,v]=map[dir];sel.style[p]=v+'px';
+  pxToViewport(sel);
+}
+function zIndex(d){if(!sel)return;push();const c=parseInt(getComputedStyle(sel).zIndex)||0;sel.style.zIndex=Math.max(0,c+d*CFG.ZINDEX_STEP);if(!sel.classList.contains('ed-media-wrap'))sel.style.position='relative';msg('z: '+(c+d*CFG.ZINDEX_STEP))}
+function dupEl(){
+  if(!sel)return;push();const c=sel.cloneNode(true);
+  /* Convert % to px before adding offset */
+  let lPx=parseInt(c.style.left||0),tPx=parseInt(c.style.top||0);
+  const slide=sel.closest('.slide');
+  if(slide){const sr=slide.getBoundingClientRect();
+    if(c.style.left&&c.style.left.includes('%'))lPx=Math.round(parseFloat(c.style.left)/100*sr.width);
+    if(c.style.top&&c.style.top.includes('%'))tPx=Math.round(parseFloat(c.style.top)/100*sr.height);
+  }
+  c.style.left=(lPx+CFG.DUP_OFFSET)+'px';c.style.top=(tPx+CFG.DUP_OFFSET)+'px';
+  pxToViewport(c);
+  sel.after(c);attachHandles();msg('복제');
+}
+function setSlideBg(c){push();curSlide().style.background=c;$('edSlideBg').value=c}
+
+/* Keyboard shortcuts */
+document.addEventListener('keydown',e=>{
+  if(!isEd())return;
+  /* Ctrl+S = save */
+  if(e.ctrlKey&&e.key==='s'&&!e.shiftKey){e.preventDefault();save();return}
+  /* Ctrl+Shift+S = save as */
+  if(e.ctrlKey&&e.shiftKey&&(e.key==='s'||e.key==='S')){e.preventDefault();saveAs();return}
+  /* Ctrl+Z = undo (works everywhere) */
+  if(e.ctrlKey&&e.key==='z'&&!e.shiftKey){e.preventDefault();undo();return}
+  /* Ctrl+Shift+Z = redo (works everywhere) */
+  if(e.ctrlKey&&e.shiftKey&&(e.key==='z'||e.key==='Z')){e.preventDefault();redo();return}
+  if(e.ctrlKey&&e.key==='y'){e.preventDefault();redo();return}
+  /* Ctrl+D = duplicate element */
+  if(e.ctrlKey&&(e.key==='d'||e.key==='D')){e.preventDefault();dupEl();return}
+  /* Arrow nudge — convert %→px, nudge, convert px→% */
+  if(sel&&!e.target.isContentEditable&&['ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.key)){
+    e.preventDefault();const d=e.shiftKey?CFG.NUDGE_LG:CFG.NUDGE_SM;
+    if(!sel.classList.contains('ed-media-wrap'))sel.style.position='relative';
+    /* Convert % to px if needed — check left and top independently */
+    const slide=sel.closest('.slide');
+    let lPx=parseInt(sel.style.left)||0,tPx=parseInt(sel.style.top)||0;
+    if(slide){const sr=slide.getBoundingClientRect();
+      if(sel.style.left&&sel.style.left.includes('%'))lPx=Math.round(parseFloat(sel.style.left)/100*sr.width);
+      if(sel.style.top&&sel.style.top.includes('%'))tPx=Math.round(parseFloat(sel.style.top)/100*sr.height);
+    }
+    if(e.key==='ArrowLeft')lPx-=d;if(e.key==='ArrowRight')lPx+=d;
+    if(e.key==='ArrowUp')tPx-=d;if(e.key==='ArrowDown')tPx+=d;
+    sel.style.left=lPx+'px';sel.style.top=tPx+'px';
+    pxToViewport(sel);
+    return;
+  }
+  if(e.key==='Delete'&&sel&&!e.target.isContentEditable){e.preventDefault();deleteElement()}
+});
+
+document.addEventListener('focusout',e=>{if(e.target.isContentEditable&&isEd()){push();buildNav()}});
+window.addEventListener('resize',()=>{if(isEd())upGuide()});
+
+/* ============================================================
+   PUBLIC API — single entry point, all methods exposed
+   ============================================================ */
+window.EA={
+  toggle, addSlide, insertImage, insertImageURL, insertVideo, insertVideoFile,
+  duplicateSlide:()=>dupAt(pAPI.S.cur), deleteSlide:()=>delAt(pAPI.S.cur), dupAt, delAt,
+  save, saveAs, resetAll, undo, redo, downloadHTML, execCmd, setAlign, setSizeMode, setSize, setColor,
+  setLineHeight, setLetterSpacing, deleteElement, alignEl, zIndex, duplicateEl:dupEl,
+  setSlideBg, setPalette, savePalette, loadPalette, savePaletteFile, loadPaletteFile, resetSlide, updateGrid:upGrid,
+  minimizeToolbar:minBar, closeToolbar:closeBar, _sw:sw
+};
+})();
+</script>
+</body>
+</html>

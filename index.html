@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>HTML Presentation — 프레젠테이션 목록</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&family=JetBrains+Mono:wght@400;700&family=Noto+Sans+KR:wght@400;700;900&display=swap" rel="stylesheet">
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{background:#0a0a0a;color:#e8e8e8;font-family:'Inter','Noto Sans KR',sans-serif;min-height:100vh;padding:40px 20px}
+  .wrap{max-width:1080px;margin:0 auto}
+  header{margin-bottom:40px}
+  h1{font-size:28px;font-weight:900;letter-spacing:-0.02em}
+  h1 .g{color:#3ECF8E}
+  .sub{color:#888;font-size:13px;margin-top:6px;font-family:'JetBrains Mono',monospace}
+  .server-status{display:inline-block;padding:4px 10px;border-radius:12px;font-size:11px;font-family:'JetBrains Mono',monospace;margin-top:8px}
+  .ss-ok{background:rgba(62,207,142,.12);border:1px solid rgba(62,207,142,.4);color:#3ECF8E}
+  .ss-bad{background:rgba(255,95,87,.12);border:1px solid rgba(255,95,87,.4);color:#ff5f57}
+
+  section{margin-bottom:36px}
+  h2{font-size:13px;color:#888;margin-bottom:12px;font-weight:700;letter-spacing:0.05em;text-transform:uppercase}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px}
+  .card{background:#141414;border:1px solid #2a2a2a;border-radius:10px;padding:18px;transition:all .15s;cursor:pointer;text-decoration:none;color:inherit;display:block}
+  .card:hover{border-color:#3ECF8E;background:#181818;transform:translateY(-1px)}
+  .card .name{font-size:15px;font-weight:700;margin-bottom:6px;word-break:break-all}
+  .card .meta{font-size:11px;color:#666;font-family:'JetBrains Mono',monospace;display:flex;justify-content:space-between}
+  .card .folder{font-size:10px;color:#3ECF8E;font-family:'JetBrains Mono',monospace;margin-bottom:10px}
+
+  .empty{color:#666;font-size:13px;padding:20px;text-align:center;border:1px dashed #333;border-radius:8px}
+
+  .help{margin-top:50px;padding:20px;background:#141414;border:1px solid #2a2a2a;border-radius:10px;font-size:13px;color:#aaa;line-height:1.7}
+  .help h3{font-size:12px;color:#3ECF8E;margin-bottom:10px;font-weight:700;letter-spacing:0.05em;text-transform:uppercase}
+  .help code{background:#000;padding:2px 6px;border-radius:4px;color:#3ECF8E;font-family:'JetBrains Mono',monospace;font-size:12px}
+
+  .refresh{position:fixed;top:20px;right:20px;background:#141414;border:1px solid #2a2a2a;color:#888;padding:8px 14px;border-radius:20px;cursor:pointer;font-size:11px;font-family:'JetBrains Mono',monospace}
+  .refresh:hover{border-color:#3ECF8E;color:#3ECF8E}
+</style>
+</head>
+<body>
+<button class="refresh" onclick="loadList()">↻ Refresh</button>
+<div class="wrap">
+  <header>
+    <h1>HTML Presentation <span class="g">v2.0</span></h1>
+    <div class="sub">http://localhost:3000 — 작업할 프레젠테이션을 선택하세요</div>
+    <div id="status"></div>
+  </header>
+
+  <section>
+    <h2>프레젠테이션</h2>
+    <div class="grid" id="presList"><div class="empty">로딩 중…</div></div>
+  </section>
+
+  <section>
+    <h2>샘플</h2>
+    <div class="grid" id="sampleList"><div class="empty">—</div></div>
+  </section>
+
+  <section>
+    <h2>새로 시작</h2>
+    <div class="grid" id="tplList"><div class="empty">—</div></div>
+  </section>
+
+  <div class="help">
+    <h3>사용 방법</h3>
+    <div>1. 위에서 작업할 프레젠테이션 클릭</div>
+    <div>2. 브라우저에서 열리면 <code>E</code> 키로 에디터 모드</div>
+    <div>3. <code>Ctrl+S</code> → 현재 파일 덮어쓰기 저장</div>
+    <div>4. <strong style="color:#3ECF8E">Export 버튼</strong> → Windows 폴더 선택 다이얼로그 → 지정한 폴더에 HTML + 미디어 flat 복사</div>
+    <div style="margin-top:10px;color:#666">자세한 내용: <code>00_START.md</code>, <code>engine/EXPORT_CONTRACT.md</code></div>
+  </div>
+</div>
+
+<script>
+const API = 'http://127.0.0.1:3001';
+const byte = b => b < 1024 ? b+'B' : b<1024*1024 ? (b/1024|0)+'KB' : (b/1024/1024).toFixed(1)+'MB';
+const ago = iso => {
+  const d = new Date(iso); const s = (Date.now()-d)/1000;
+  if(s<60) return 'now'; if(s<3600) return (s/60|0)+'m ago';
+  if(s<86400) return (s/3600|0)+'h ago'; return (s/86400|0)+'d ago';
+};
+
+function renderList(listEl, items){
+  if(!items || !items.length){ listEl.innerHTML='<div class="empty">없음</div>'; return; }
+  listEl.innerHTML = items.map(it => `
+    <a class="card" href="${it.relUrl}">
+      <div class="folder">${it.folder}/</div>
+      <div class="name">${it.file}</div>
+      <div class="meta"><span>${ago(it.mtime)}</span><span>${byte(it.bytes)}</span></div>
+    </a>
+  `).join('');
+}
+
+async function loadList(){
+  const statusEl = document.getElementById('status');
+  try{
+    const ping = await fetch(API+'/ping');
+    const pj = await ping.json();
+    statusEl.innerHTML = '<div class="server-status ss-ok">● Save/Export API 정상 (v'+pj.version+')</div>';
+  }catch(e){
+    statusEl.innerHTML = '<div class="server-status ss-bad">✗ Save/Export API 응답 없음 — 서버시작.bat 재실행 필요</div>';
+    return;
+  }
+  try{
+    const r = await fetch(API+'/list-presentations');
+    const j = await r.json();
+    if(!j.ok) throw new Error(j.error);
+    renderList(document.getElementById('presList'), j.items);
+    renderList(document.getElementById('sampleList'), j.samples);
+    renderList(document.getElementById('tplList'), j.template);
+  }catch(e){
+    document.getElementById('presList').innerHTML = '<div class="empty">목록 로드 실패: '+e.message+'</div>';
+  }
+}
+loadList();
+</script>
+</body>
+</html>
