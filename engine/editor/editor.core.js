@@ -64,8 +64,14 @@ function ensureEditorShellDOM(){
       + '<button onclick="EA.saveAs&&EA.saveAs()" title="저장 위치 선택">Save As</button>'
       + '<button onclick="EA.exportHTML&&EA.exportHTML()" title="Ctrl+Shift+S">Export</button>'
       + '<button class="fb-reset" onclick="EA.resetAll&&EA.resetAll()">Reset</button>'
-      + '<button class="fb-exit" onclick="EA.toggle&&EA.toggle()">Edit Mode Out</button>';
+      + '<button class="fb-exit" onclick="EA.toggle&&EA.toggle()">Edit Mode Out</button>'
+      + '<span class="ed-server-status" data-state="checking">SERVER CHECK...</span>';
     body.insertBefore(bar,body.firstChild);
+  }
+  updateEditorServerStatus();
+  if(!window._edServerStatusTimer){
+    window._edServerStatusTimer=setInterval(updateEditorServerStatus,10000);
+    document.addEventListener('visibilitychange',()=>{if(!document.hidden)updateEditorServerStatus()});
   }
   let nav=document.querySelector('.ed-nav');
   if(!nav){
@@ -179,6 +185,43 @@ function ensureEditorShellDOM(){
       snap.className='ed-snap-v';
       snap.id='edSnapV';
       overlayParent.appendChild(snap);
+    }
+  }
+}
+
+async function updateEditorServerStatus(){
+  const el=document.querySelector('.ed-server-status');
+  if(!el)return;
+  const isFile=location.protocol==='file:';
+  const isLocalhost=/^(localhost|127\.0\.0\.1)$/i.test(location.hostname||'');
+  el.dataset.state='checking';
+  el.textContent='SERVER CHECK...';
+  try{
+    const r=await fetch(CFG.SAVE_API+'/ping',{signal:AbortSignal.timeout(900)});
+    const j=await r.json();
+    if(!j||!j.ok)throw new Error('bad ping');
+    if(isFile){
+      el.dataset.state='warn';
+      el.textContent='FILE MODE: Save 가능 / Export는 localhost 필요';
+      el.title='서버는 켜져 있지만 file://에서는 Export가 제한됩니다. 서버가 연 http://localhost:3000 경로에서 열면 Save/Export가 안정적으로 동작합니다.';
+    }else if(isLocalhost){
+      el.dataset.state='ok';
+      el.textContent='SERVER OK: Save / Export 가능';
+      el.title='서버시작.bat의 정적 서버와 저장 API가 연결되었습니다.';
+    }else{
+      el.dataset.state='warn';
+      el.textContent='REMOTE MODE: 로컬 저장 제한';
+      el.title='로컬 저장/Export는 localhost 환경을 기준으로 설계되어 있습니다.';
+    }
+  }catch(e){
+    if(isFile){
+      el.dataset.state='danger';
+      el.textContent='TEMP MODE: 서버시작.bat 필요';
+      el.title='현재 file:// 임시 편집 상태입니다. Save는 localStorage 임시 보관만 가능하고, Save As/Export는 서버시작.bat 실행 후 localhost에서 사용해야 합니다.';
+    }else{
+      el.dataset.state='danger';
+      el.textContent='SERVER OFF: Save / Export 제한';
+      el.title='localhost:3001 저장 API에 연결할 수 없습니다. 서버시작.bat을 실행하세요.';
     }
   }
 }
