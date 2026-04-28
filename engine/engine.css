@@ -358,6 +358,23 @@ body.editor-mode .ed-mode-badge{display:block}
 .ed-confirm-btns button{padding:8px 20px;border-radius:6px;font-size:13px;cursor:pointer;border:1px solid var(--ui-bdr);font-family:'Noto Sans KR',sans-serif}
 .ed-confirm-btns .cancel{background:var(--ui-bg-2);color:var(--ui-text)}
 .ed-confirm-btns .ok{background:rgba(255,95,87,.15);color:var(--ui-danger);border-color:var(--ui-danger)}
+.ed-saveas-box{width:min(720px,calc(100vw - 48px));max-width:720px;text-align:left;padding:18px 20px}
+.ed-saveas-title{font:700 13px/1.2 'JetBrains Mono','Noto Sans KR',monospace;color:var(--g);margin-bottom:14px;letter-spacing:.02em}
+.ed-saveas-label{display:block;margin:10px 0 6px;color:var(--ui-text-2);font:700 10px/1 'JetBrains Mono',monospace;text-transform:uppercase;letter-spacing:.08em}
+.ed-saveas-row{display:grid;grid-template-columns:minmax(0,1fr) 132px;gap:8px;align-items:center}
+.ed-saveas-input{width:100%;box-sizing:border-box;background:#050505;border:1px solid var(--ui-bdr);border-radius:4px;color:var(--ui-text);font:13px/1.35 'JetBrains Mono','Noto Sans KR',monospace;padding:8px 10px;outline:none}
+.ed-saveas-input:focus{border-color:var(--g);box-shadow:0 0 0 2px rgba(62,207,142,.14)}
+.ed-saveas-browse-btn,.ed-saveas-go-btn{height:36px;background:var(--ui-bg-3);border:1px solid var(--ui-bdr);border-radius:4px;color:var(--ui-text);font:700 12px/1 'Noto Sans KR',sans-serif;cursor:pointer}
+.ed-saveas-browse-btn:hover,.ed-saveas-go-btn:hover{border-color:var(--ui-accent-bdr);background:var(--ui-accent-bg)}
+.ed-saveas-preview{margin:10px 0 14px;min-height:18px;color:var(--ui-text-2);font:11px/1.45 'JetBrains Mono','Noto Sans KR',monospace;word-break:break-all}
+.ed-saveas-preview[data-state="ok"]{color:var(--g)}
+.ed-saveas-preview[data-state="error"]{color:var(--ui-danger)}
+.ed-saveas-box .ed-confirm-btns .ok{background:var(--ui-accent-bg);color:var(--g);border-color:var(--ui-accent-bdr)}
+.ed-saveas-folder-box{max-width:560px}
+.ed-saveas-folder-list{height:260px;overflow:auto;margin:10px 0;border:1px solid var(--ui-bdr);border-radius:6px;background:#090909;padding:6px}
+.ed-saveas-folder-item{display:block;width:100%;padding:8px 10px;margin:0 0 4px;background:transparent;border:1px solid transparent;border-radius:4px;color:var(--ui-text);font:12px/1.2 'Noto Sans KR',sans-serif;text-align:left;cursor:pointer}
+.ed-saveas-folder-item:hover{background:var(--ui-accent-bg);border-color:var(--ui-accent-bdr)}
+.ed-saveas-empty{padding:18px 10px;color:var(--ui-text-3);font-size:12px;text-align:center}
 
 /* ============================================================
    ANIMATION PRESETS — char-level keyframes

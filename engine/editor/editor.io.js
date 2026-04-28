@@ -497,21 +497,35 @@ function _basenameRelPath(filePath){
   const p=_normalizeRelPathForEditor(filePath);
   return p.split('/').pop()||'presentation.html';
 }
+function _escapeHTML(s){
+  return String(s==null?'':s).replace(/[<>&"]/g,c=>({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c]));
+}
+function _splitSaveAsPath(filePath){
+  const p=_normalizeRelPathForEditor(filePath);
+  return {dir:_dirnameRelPath(p),name:_basenameRelPath(p)};
+}
+function _targetPathFromSaveAsParts(dir,name){
+  const n=String(name||'').trim();
+  if(!n)throw new Error('파일 이름이 비어 있습니다.');
+  return _normalizeSaveAsTargetPath(_joinRelPath(String(dir||'').trim(),n));
+}
 function _normalizeSaveAsTargetPath(rawPath){
   const current=_getFilePath();
   const currentDir=_dirnameRelPath(current);
   const presentationRoot=current.indexOf('presentations/')===0?_dirnameRelPath(currentDir):'';
   let p=String(rawPath||'').trim().replace(/^["']|["']$/g,'').replace(/\\/g,'/');
+  let anchored=false;
   if(!p)throw new Error('저장 경로가 비어 있습니다.');
   try{
-    if(/^https?:\/\//i.test(p))p=decodeURIComponent(new URL(p).pathname);
+    if(/^https?:\/\//i.test(p)){p=decodeURIComponent(new URL(p).pathname);anchored=true;}
   }catch(e){}
   const rootMatch=p.match(/(?:^|\/)PPTX\/(.+)$/i);
-  if(rootMatch)p=rootMatch[1];
+  if(rootMatch){p=rootMatch[1];anchored=true;}
+  if(p.charAt(0)==='/')anchored=true;
   p=p.replace(/^\/+/,'');
   if(/^[a-z]:\//i.test(p))throw new Error('PPTX 폴더 밖 절대경로는 로컬 편집 파일로 전환할 수 없습니다.');
   if(p.indexOf('./')===0)p=_joinRelPath(currentDir,p.slice(2));
-  else if(p.indexOf('/')<0)p=_joinRelPath(currentDir,p);
+  else if(p.indexOf('/')<0&&!anchored)p=_joinRelPath(currentDir,p);
   else if(p.indexOf('presentations/')!==0&&presentationRoot)p=_joinRelPath(presentationRoot,p);
   if(p.endsWith('/'))p=_joinRelPath(p,_basenameRelPath(current));
   if(!/\.html?$/i.test(p))p+='.html';
@@ -522,6 +536,131 @@ function _normalizeSaveAsTargetPath(rawPath){
     if(/[<>:"|?*\x00-\x1F]/.test(part))throw new Error('파일/폴더 이름에 사용할 수 없는 문자가 있습니다: '+part);
   }
   return parts.join('/');
+}
+function _relPathBetween(fromDir,toPath){
+  const from=_normalizeRelPathForEditor(fromDir).split('/').filter(Boolean);
+  const to=_normalizeRelPathForEditor(toPath).split('/').filter(Boolean);
+  while(from.length&&to.length&&from[0]===to[0]){from.shift();to.shift();}
+  return '../'.repeat(from.length)+to.join('/');
+}
+function _localURLToAssetRef(src,sourceHtml){
+  try{
+    const u=new URL(src,location.href);
+    if(u.origin!==location.origin)return null;
+    const rootRel=decodeURIComponent(u.pathname.replace(/^\/+/,''));
+    if(!rootRel)return null;
+    return _relPathBetween(_dirnameRelPath(sourceHtml),rootRel);
+  }catch(e){return null}
+}
+function _isGeneratedSaveAsAssetRef(ref,assets){
+  const raw=String(ref||'').replace(/[?#].*$/,'');
+  if(!raw||raw.indexOf('/')>=0||raw.indexOf('\\')>=0)return false;
+  const lower=raw.toLowerCase();
+  return (assets||[]).some(a=>String(a&&a.name||'').toLowerCase()===lower);
+}
+function _uniqueAssetNameForSaveAs(used,preferred){
+  let base=(String(preferred||'media').replace(/[?#].*$/,'').split(/[\\/]/).pop()||'media')
+    .replace(/[<>:"/\\|?*\x00-\x1F]/g,'_').replace(/\s+/g,'_');
+  if(!base)base='media';
+  let name=base,n=2;
+  while(used.has(name.toLowerCase())){
+    const dot=base.lastIndexOf('.');
+    const stem=dot>0?base.slice(0,dot):base;
+    const ext=dot>0?base.slice(dot):'';
+    name=stem+'_'+(n++)+ext;
+  }
+  used.add(name.toLowerCase());
+  return name;
+}
+async function _readAssetAsSaveData(ref,sourceHtml){
+  const url=CFG.SAVE_API+'/read-asset?relTo='+encodeURIComponent(sourceHtml)+'&ref='+encodeURIComponent(ref);
+  const r=await fetch(url,{signal:AbortSignal.timeout(10000)});
+  const j=await r.json();
+  if(!j.ok)throw new Error(j.error||'asset read failed: '+ref);
+  return {data:'data:'+(j.mime||'application/octet-stream')+';base64,'+j.base64,bytes:j.bytes,mime:j.mime};
+}
+async function _collectSaveAsReferencedAssets(cl,targetPath,assets){
+  const sourceHtml=_getFilePath();
+  const used=new Set([_basenameRelPath(targetPath).toLowerCase()]);
+  (assets||[]).forEach(a=>{if(a&&a.name)used.add(String(a.name).toLowerCase())});
+  const refToName=new Map();
+
+  async function copyRef(ref,preferred){
+    if(!ref||_isGeneratedSaveAsAssetRef(ref,assets))return ref;
+    if(refToName.has(ref))return refToName.get(ref);
+    const name=_uniqueAssetNameForSaveAs(used,preferred||ref);
+    const read=await _readAssetAsSaveData(ref,sourceHtml);
+    assets.push({name,data:read.data});
+    refToName.set(ref,name);
+    return name;
+  }
+  async function rewriteAttr(el,attr){
+    const src=el.getAttribute(attr);
+    if(!src)return;
+    if(src.startsWith('blob:'))return;
+    if(src.startsWith('data:')){
+      const name=_uniqueAssetNameForSaveAs(used,'embedded_'+Math.random().toString(36).slice(2,8)+_guessExtFromDataURL(src));
+      assets.push({name,data:src});
+      el.setAttribute(attr,name);
+      return;
+    }
+    if(/^https?:\/\//i.test(src)){
+      const localRef=_localURLToAssetRef(src,sourceHtml);
+      if(!localRef)return;
+      el.setAttribute(attr,await copyRef(localRef,src));
+      return;
+    }
+    if(_isGeneratedSaveAsAssetRef(src,assets))return;
+    el.setAttribute(attr,await copyRef(src,src));
+  }
+
+  for(const el of cl.querySelectorAll('img[src],video[src],source[src],audio[src],iframe[src]')){
+    await rewriteAttr(el,'src');
+  }
+  for(const el of cl.querySelectorAll('[poster]')){
+    await rewriteAttr(el,'poster');
+  }
+  for(const el of cl.querySelectorAll('[style]')){
+    const st=el.getAttribute('style');
+    if(!st||!/url\(/i.test(st))continue;
+    const matches=[...st.matchAll(/url\((['"]?)([^'")]+)\1\)/gi)];
+    let rewritten=st;
+    for(const m of matches){
+      const u=m[2];
+      if(!u||u.startsWith('blob:')||/^https?:\/\//i.test(u)&&!_localURLToAssetRef(u,sourceHtml))continue;
+      let next=u;
+      if(u.startsWith('data:')){
+        const name=_uniqueAssetNameForSaveAs(used,'embedded_'+Math.random().toString(36).slice(2,8)+_guessExtFromDataURL(u));
+        assets.push({name,data:u});
+        next=name;
+      }else{
+        const ref=/^https?:\/\//i.test(u)?_localURLToAssetRef(u,sourceHtml):u;
+        if(ref&&!_isGeneratedSaveAsAssetRef(ref,assets))next=await copyRef(ref,u);
+      }
+      if(next!==u)rewritten=rewritten.split(m[0]).join('url('+m[1]+next+m[1]+')');
+    }
+    if(rewritten!==st)el.setAttribute('style',rewritten);
+  }
+}
+async function _checkSaveAsConflicts(targetPath,assets){
+  const r=await fetch(CFG.SAVE_API+'/exists',{
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({filePath:targetPath,assets:(assets||[]).map(a=>a&&a.name).filter(Boolean)}),
+    signal:AbortSignal.timeout(5000)
+  });
+  const j=await r.json();
+  if(!j.ok)throw new Error(j.error||'exists check failed');
+  return j;
+}
+async function _listSaveAsDirs(dir){
+  const r=await fetch(CFG.SAVE_API+'/list-dirs?dir='+encodeURIComponent(_normalizeRelPathForEditor(dir)),{
+    cache:'no-store',
+    signal:AbortSignal.timeout(5000)
+  });
+  const j=await r.json();
+  if(!j.ok)throw new Error(j.error||'folder list failed');
+  return j;
 }
 
 /* ── Save: 포토샵처럼 현재 파일 직접 덮어씀 ──
@@ -1076,6 +1215,121 @@ function inputDlg(label, defaultValue){
   });
 }
 
+function saveAsPathDlg(defaultPath){
+  return new Promise(resolve=>{
+    const parts=_splitSaveAsPath(defaultPath);
+    const d=document.createElement('div');
+    d.className='ed-confirm';
+    d.innerHTML='<div class="ed-confirm-box ed-saveas-box">'+
+      '<div class="ed-saveas-title">Save As</div>'+
+      '<label class="ed-saveas-label">저장 폴더</label>'+
+      '<div class="ed-saveas-row">'+
+        '<input type="text" class="ed-saveas-input ed-saveas-dir" value="'+_escapeHTML(parts.dir)+'" spellcheck="false">'+
+        '<button type="button" class="ed-saveas-browse-btn">폴더 찾기</button>'+
+      '</div>'+
+      '<label class="ed-saveas-label">파일 이름</label>'+
+      '<input type="text" class="ed-saveas-input ed-saveas-file" value="'+_escapeHTML(parts.name)+'" spellcheck="false">'+
+      '<div class="ed-saveas-preview"></div>'+
+      '<div class="ed-confirm-btns"><button class="cancel">취소</button><button class="ok">저장</button></div>'+
+    '</div>';
+    document.body.appendChild(d);
+    const dir=d.querySelector('.ed-saveas-dir');
+    const file=d.querySelector('.ed-saveas-file');
+    const preview=d.querySelector('.ed-saveas-preview');
+    const cleanup=()=>d.remove();
+    const render=()=>{
+      try{
+        const target=_targetPathFromSaveAsParts(dir.value,file.value);
+        preview.textContent=target;
+        preview.dataset.state='ok';
+        return target;
+      }catch(e){
+        preview.textContent=e.message;
+        preview.dataset.state='error';
+        return '';
+      }
+    };
+    const ok=()=>{
+      const target=render();
+      if(!target)return;
+      cleanup();
+      resolve(target);
+    };
+    const cancel=()=>{cleanup();resolve(null)};
+    d.querySelector('.ok').onclick=ok;
+    d.querySelector('.cancel').onclick=cancel;
+    d.querySelector('.ed-saveas-browse-btn').onclick=async()=>{
+      const chosen=await saveAsFolderDlg(dir.value||parts.dir||'');
+      if(chosen!=null){dir.value=chosen;render();file.focus();file.select();}
+    };
+    [dir,file].forEach(inp=>{
+      inp.addEventListener('input',render);
+      inp.addEventListener('keydown',e=>{
+        if(e.key==='Enter'){e.preventDefault();ok();}
+        else if(e.key==='Escape'){e.preventDefault();cancel();}
+      });
+    });
+    render();
+    setTimeout(()=>{file.focus();file.select();},50);
+  });
+}
+
+function saveAsFolderDlg(startDir){
+  return new Promise(resolve=>{
+    const d=document.createElement('div');
+    d.className='ed-confirm';
+    d.innerHTML='<div class="ed-confirm-box ed-saveas-box ed-saveas-folder-box">'+
+      '<div class="ed-saveas-title">저장 폴더 선택</div>'+
+      '<div class="ed-saveas-row">'+
+        '<input type="text" class="ed-saveas-input ed-saveas-folder-path" spellcheck="false">'+
+        '<button type="button" class="ed-saveas-go-btn">이동</button>'+
+      '</div>'+
+      '<div class="ed-saveas-folder-list"></div>'+
+      '<div class="ed-saveas-preview"></div>'+
+      '<div class="ed-confirm-btns"><button class="cancel">취소</button><button class="ok">이 폴더 선택</button></div>'+
+    '</div>';
+    document.body.appendChild(d);
+    const pathInput=d.querySelector('.ed-saveas-folder-path');
+    const list=d.querySelector('.ed-saveas-folder-list');
+    const status=d.querySelector('.ed-saveas-preview');
+    let current=_normalizeRelPathForEditor(startDir);
+    const cleanup=()=>d.remove();
+    const setStatus=(text,state)=>{status.textContent=text;status.dataset.state=state||'ok'};
+    async function load(dir){
+      current=_normalizeRelPathForEditor(dir);
+      pathInput.value=current;
+      list.innerHTML='<div class="ed-saveas-empty">불러오는 중...</div>';
+      setStatus(current||'(PPTX 루트)','ok');
+      try{
+        const j=await _listSaveAsDirs(current);
+        current=j.dir||'';
+        pathInput.value=current;
+        const rows=[];
+        if(j.parent!==current)rows.push('<button type="button" class="ed-saveas-folder-item" data-dir="'+_escapeHTML(j.parent||'')+'">.. 상위 폴더</button>');
+        (j.dirs||[]).forEach(item=>{
+          rows.push('<button type="button" class="ed-saveas-folder-item" data-dir="'+_escapeHTML(item.rel)+'">'+_escapeHTML(item.name)+'</button>');
+        });
+        list.innerHTML=rows.join('')||'<div class="ed-saveas-empty">하위 폴더 없음</div>';
+        list.querySelectorAll('.ed-saveas-folder-item').forEach(btn=>{
+          btn.onclick=()=>load(btn.getAttribute('data-dir')||'');
+        });
+      }catch(e){
+        list.innerHTML='<div class="ed-saveas-empty">폴더를 찾을 수 없습니다</div>';
+        setStatus(e.message,'error');
+      }
+    }
+    d.querySelector('.ed-saveas-go-btn').onclick=()=>load(pathInput.value);
+    d.querySelector('.ok').onclick=()=>{cleanup();resolve(_normalizeRelPathForEditor(pathInput.value))};
+    d.querySelector('.cancel').onclick=()=>{cleanup();resolve(null)};
+    pathInput.onkeydown=e=>{
+      if(e.key==='Enter'){e.preventDefault();load(pathInput.value);}
+      else if(e.key==='Escape'){e.preventDefault();cleanup();resolve(null);}
+    };
+    load(current);
+    setTimeout(()=>pathInput.focus(),50);
+  });
+}
+
 /* 기본 Export 폴더 추천 (운영체제에 따라) */
 function _getDefaultExportDir(){
   const p=location.pathname;
@@ -1277,9 +1531,8 @@ async function saveAs(){
       return;
     }
 
-    const rawPath=await inputDlg('Save As — PPTX 루트 기준 새 HTML 경로:', _getFilePath());
-    if(!rawPath){ msg('Save As 취소'); return; }
-    const targetPath=_normalizeSaveAsTargetPath(rawPath);
+    const targetPath=await saveAsPathDlg(_getFilePath());
+    if(!targetPath){ msg('Save As 취소'); return; }
 
     msg('다른 이름으로 저장 중…');
     const{cl,expDeck,expMeta}=_buildSaveHTML();
@@ -1287,8 +1540,21 @@ async function saveAs(){
     const blobResult=await _persistBlobMediaInClone(cl,async(name,blob)=>{
       assets.push({name,data:await _blobToBase64(blob)});
     },{removeMissing:true});
+    await _collectSaveAsReferencedAssets(cl,targetPath,assets);
     _ensureEditableExternalEngine(cl,targetPath);
     const fullHTML='<!DOCTYPE html>\n'+cl.outerHTML;
+    const conflicts=await _checkSaveAsConflicts(targetPath,assets);
+    if(conflicts.file||(conflicts.assets&&conflicts.assets.length)){
+      let report='같은 이름의 파일이 이미 있습니다.\n\n';
+      if(conflicts.file)report+='HTML: '+targetPath+'\n';
+      if(conflicts.assets&&conflicts.assets.length){
+        report+='미디어: '+conflicts.assets.slice(0,8).join(', ');
+        if(conflicts.assets.length>8)report+=' 외 '+(conflicts.assets.length-8)+'개';
+        report+='\n';
+      }
+      report+='\n덮어쓸까요?';
+      if(!await confirmDlg(report)){msg('Save As 취소');return;}
+    }
     const res=await fetch(CFG.SAVE_API+'/save',{
       method:'POST',
       headers:{'Content-Type':'application/json'},
@@ -1298,12 +1564,20 @@ async function saveAs(){
     const json=await res.json();
     if(!json.ok)throw new Error(json.error);
     _removeDeadBlobMediaFromLive(blobResult.missing);
-    try{localStorage.setItem(CFG.LS_SAVE,expDeck?expDeck.innerHTML:'');localStorage.setItem(CFG.LS_HASH,expMeta?expMeta.getAttribute('content'):'')}catch(e){}
+    try{
+      localStorage.removeItem(CFG.LS_SAVE);
+      localStorage.removeItem(CFG.LS_HASH);
+      localStorage.setItem('ed_reopen_editor_path',targetPath);
+    }catch(e){}
     _setDirty(false);
     _setCurrentFilePath(targetPath);
     msg('✔ Save As 완료 → 새 파일로 이동 중… '+targetPath
       +(blobResult.missing.length?' (죽은 blob '+blobResult.missing.length+'개 자동 삭제)':''));
-    setTimeout(()=>{ location.href=_servedUrlForRelPath(targetPath); },500);
+    const nextUrl=_servedUrlForRelPath(targetPath);
+    setTimeout(()=>{
+      if(nextUrl&&nextUrl!==location.href)location.href=nextUrl;
+      else location.reload();
+    },500);
   }catch(e){console.error('[SaveAs]',e);msg('Save As 실패: '+e.message)}
 }
 

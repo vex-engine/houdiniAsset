@@ -902,6 +902,14 @@ try{
     el.setAttribute('data-group-mode', el.classList.contains('ed-group-frame')?'frame':'card');
   });
 }catch(e){}
+/* Save As 후 새 파일로 이동해도 편집 흐름이 끊기지 않도록 editor mode 복구 */
+try{
+  const reopenPath=localStorage.getItem('ed_reopen_editor_path');
+  if(reopenPath&&typeof _getFilePath==='function'&&reopenPath===_getFilePath()){
+    localStorage.removeItem('ed_reopen_editor_path');
+    setTimeout(()=>{if(!isEd())toggle();},0);
+  }
+}catch(e){}
 /* Always init guide on load and on resize */
 upGuide();
 window.addEventListener('resize',()=>requestAnimationFrame(upGuide));

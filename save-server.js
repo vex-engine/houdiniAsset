@@ -164,6 +164,24 @@ function normalizeDir(p){
   if(!path.isAbsolute(x)) x = path.resolve(PPTX_ROOT, x);
   return path.normalize(x);
 }
+function normalizeRelPath(p, opts){
+  opts = opts || {};
+  let x = String(p || '').trim().replace(/^["']|["']$/g,'').replace(/\\/g,'/');
+  x = x.replace(/^\/+/, '');
+  if(!x && opts.allowEmpty) return '';
+  if(!x) throw new Error('empty path');
+  if(path.isAbsolute(x) || /^[a-z]:\//i.test(x) || x.includes('..')) throw new Error('relative path required');
+  return x;
+}
+function resolveRootRel(rel, opts){
+  const clean = normalizeRelPath(rel, opts);
+  const full = path.resolve(PPTX_ROOT, clean || '.');
+  if(!full.startsWith(PPTX_ROOT)) throw new Error('path escapes root');
+  return { rel: clean, full };
+}
+function relFromRoot(full){
+  return toPosix(path.relative(PPTX_ROOT, full));
+}
 
 /* 파일명 안전화 (OS 별 금지 문자 + 길이) */
 function safeName(s){
@@ -196,6 +214,43 @@ const apiServer = http.createServer(async (req, res) => {
   /* ─────────── PING ─────────── */
   if(u.pathname === '/ping'){
     return jsonRes(res, 200, { ok:true, version:'2.0', root:PPTX_ROOT });
+  }
+
+  /* ─────────── DIRECTORY LIST: Save As 폴더 찾기 ─────────── */
+  if(req.method === 'GET' && u.pathname === '/list-dirs'){
+    try{
+      const { rel, full } = resolveRootRel(u.query.dir || '', { allowEmpty:true });
+      if(!fs.existsSync(full) || !fs.statSync(full).isDirectory()) throw new Error('directory not found');
+      const dirs = fs.readdirSync(full, { withFileTypes:true })
+        .filter(d => d.isDirectory() && !d.name.startsWith('.') && d.name !== 'node_modules' && d.name !== '.git')
+        .map(d => ({ name:d.name, rel:toPosix(path.posix.join(rel, d.name)) }))
+        .sort((a,b)=>a.name.localeCompare(b.name, 'ko'));
+      const parent = rel ? relFromRoot(path.dirname(full)) : '';
+      return jsonRes(res, 200, { ok:true, dir:rel, parent, dirs });
+    }catch(e){ console.error('[list-dirs] error', e); return jsonRes(res, 400, { ok:false, error:e.message }); }
+  }
+
+  /* ─────────── EXISTS: Save As 덮어쓰기 확인 ─────────── */
+  if(req.method === 'POST' && u.pathname === '/exists'){
+    try{
+      const body = await readJSON(req);
+      const filePath = normalizeRelPath(body.filePath || '');
+      const { full } = resolveRootRel(filePath);
+      const dir = path.dirname(full);
+      const assets = Array.isArray(body.assets) ? body.assets : [];
+      const existingAssets = [];
+      for(const a of assets){
+        const name = safeName(a && (a.name || a));
+        const assetPath = path.resolve(dir, name);
+        if(!assetPath.startsWith(dir)) throw new Error('asset path escapes deck folder: '+name);
+        if(fs.existsSync(assetPath)) existingAssets.push(name);
+      }
+      return jsonRes(res, 200, {
+        ok:true,
+        file:fs.existsSync(full),
+        assets:[...new Set(existingAssets)]
+      });
+    }catch(e){ console.error('[exists] error', e); return jsonRes(res, 400, { ok:false, error:e.message }); }
   }
 
   /* ─────────── SAVE: 기존 파일 덮어쓰기 ─────────── */
