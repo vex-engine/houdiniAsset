@@ -493,32 +493,35 @@ function _servedUrlForRelPath(filePath){
   const encoded=_normalizeRelPathForEditor(filePath).split('/').map(encodeURIComponent).join('/');
   return location.origin.replace(/\/$/,'')+'/'+encoded;
 }
-function _saveAsCandidatePaths(dirName,fileName){
+function _basenameRelPath(filePath){
+  const p=_normalizeRelPathForEditor(filePath);
+  return p.split('/').pop()||'presentation.html';
+}
+function _normalizeSaveAsTargetPath(rawPath){
   const current=_getFilePath();
   const currentDir=_dirnameRelPath(current);
-  const parentDir=_dirnameRelPath(currentDir);
-  const cleanDir=_normalizeRelPathForEditor(dirName);
-  const candidates=[
-    _joinRelPath(currentDir,fileName),
-    _joinRelPath(parentDir,cleanDir,fileName)
-  ];
-  if(current.indexOf('presentations/')===0)candidates.push(_joinRelPath('presentations',cleanDir,fileName));
-  candidates.push(_joinRelPath(cleanDir,fileName));
-  return candidates.filter((p,i,a)=>p&&a.indexOf(p)===i);
-}
-async function _findServedSaveAsPath(dirName,fileName,html){
-  const candidates=_saveAsCandidatePaths(dirName,fileName);
-  for(const rel of candidates){
-    const url=_servedUrlForRelPath(rel);
-    if(!url)continue;
-    try{
-      const r=await fetch(url+'?v=' + Date.now(),{cache:'no-store',signal:AbortSignal.timeout(1200)});
-      if(!r.ok)continue;
-      const txt=await r.text();
-      if(txt===html)return rel;
-    }catch(e){}
+  const presentationRoot=current.indexOf('presentations/')===0?_dirnameRelPath(currentDir):'';
+  let p=String(rawPath||'').trim().replace(/^["']|["']$/g,'').replace(/\\/g,'/');
+  if(!p)throw new Error('저장 경로가 비어 있습니다.');
+  try{
+    if(/^https?:\/\//i.test(p))p=decodeURIComponent(new URL(p).pathname);
+  }catch(e){}
+  const rootMatch=p.match(/(?:^|\/)PPTX\/(.+)$/i);
+  if(rootMatch)p=rootMatch[1];
+  p=p.replace(/^\/+/,'');
+  if(/^[a-z]:\//i.test(p))throw new Error('PPTX 폴더 밖 절대경로는 로컬 편집 파일로 전환할 수 없습니다.');
+  if(p.indexOf('./')===0)p=_joinRelPath(currentDir,p.slice(2));
+  else if(p.indexOf('/')<0)p=_joinRelPath(currentDir,p);
+  else if(p.indexOf('presentations/')!==0&&presentationRoot)p=_joinRelPath(presentationRoot,p);
+  if(p.endsWith('/'))p=_joinRelPath(p,_basenameRelPath(current));
+  if(!/\.html?$/i.test(p))p+='.html';
+  const parts=p.split('/').filter(Boolean);
+  if(!parts.length)throw new Error('저장 경로가 올바르지 않습니다.');
+  for(const part of parts){
+    if(part==='..'||part==='.')throw new Error('상위 폴더(..) 경로는 사용할 수 없습니다.');
+    if(/[<>:"|?*\x00-\x1F]/.test(part))throw new Error('파일/폴더 이름에 사용할 수 없는 문자가 있습니다: '+part);
   }
-  return '';
+  return parts.join('/');
 }
 
 /* ── Save: 포토샵처럼 현재 파일 직접 덮어씀 ──
@@ -1252,9 +1255,9 @@ async function resetAll(){
 /* ============================================================
    SAVE AS — 로컬 전용 (서버 필수)
    ============================================================
-   - 임의 경로에 HTML 한 파일만 저장 (미디어 복사 없음)
+   - PPTX 루트 안의 새 상대경로로 저장하고 현재 편집 파일을 전환
    - editor.js 참조 유지 (다시 열어서 에디터로 편집 가능)
-   - 다른 PC로 이식 안 됨 (이식은 Export 사용)
+   - PPTX 루트 밖으로 이식할 때는 Export 사용
    - 서버 없으면 실패 (fallback 없음 — 명확한 에러)
    ============================================================ */
 async function saveAs(){
@@ -1263,46 +1266,44 @@ async function saveAs(){
       await confirmDlg('file:// 에서는 Save As 불가.\n\n서버시작.bat 실행 후 http://localhost:3000 에서 열어주세요.',{okOnly:true});
       return;
     }
-    if(!window.showDirectoryPicker){
-      await confirmDlg('이 브라우저는 폴더 선택을 지원하지 않습니다.\nChrome/Edge 최신 버전 사용해주세요.',{okOnly:true});
+    let serverOk=false;
+    try{
+      const r=await fetch(CFG.SAVE_API+'/ping',{signal:AbortSignal.timeout(1500)});
+      const j=await r.json();
+      serverOk=!!j.ok;
+    }catch(e){}
+    if(!serverOk){
+      await confirmDlg('Save As는 로컬 저장 서버가 필요합니다.\n\n서버시작.bat 실행 후 http://localhost:3000 에서 다시 시도해주세요.',{okOnly:true});
       return;
     }
 
-    /* 폴더 선택 */
-    let dirHandle;
-    try{
-      dirHandle=await window.showDirectoryPicker({mode:'readwrite', id:'pptx-save-as', startIn:'documents'});
-    }catch(e){
-      if(e.name==='AbortError'){ msg('Save As 취소'); return; }
-      throw e;
-    }
-    /* 파일명 — location.pathname은 URL 인코딩 상태이므로 decodeURIComponent 필수 */
-    let defName='presentation.html';
-    try{ defName = decodeURIComponent(location.pathname.split('/').pop()||'presentation.html'); }catch(e){ defName = location.pathname.split('/').pop()||'presentation.html'; }
-    const fileName=await inputDlg('Save As — 파일명:', defName);
-    if(!fileName){ msg('Save As 취소'); return; }
-    const safeName=fileName.replace(/[<>:"/\\|?*\x00-\x1F]/g,'_');
+    const rawPath=await inputDlg('Save As — PPTX 루트 기준 새 HTML 경로:', _getFilePath());
+    if(!rawPath){ msg('Save As 취소'); return; }
+    const targetPath=_normalizeSaveAsTargetPath(rawPath);
 
     msg('다른 이름으로 저장 중…');
     const{cl,expDeck,expMeta}=_buildSaveHTML();
-    const blobResult=await _persistBlobMediaInClone(cl,(name,blob)=>_writeBlobToDir(dirHandle,name,blob),{removeMissing:true});
-    _ensureEditableExternalEngine(cl,safeName,{base:location.origin.replace(/\/$/,'')+'/engine/'});
+    const assets=[];
+    const blobResult=await _persistBlobMediaInClone(cl,async(name,blob)=>{
+      assets.push({name,data:await _blobToBase64(blob)});
+    },{removeMissing:true});
+    _ensureEditableExternalEngine(cl,targetPath);
     const fullHTML='<!DOCTYPE html>\n'+cl.outerHTML;
-    await _writeFileToDir(dirHandle, safeName, fullHTML, 'text/html;charset=utf-8');
+    const res=await fetch(CFG.SAVE_API+'/save',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({filePath:targetPath,html:fullHTML,assets}),
+      signal:AbortSignal.timeout(10000)
+    });
+    const json=await res.json();
+    if(!json.ok)throw new Error(json.error);
     _removeDeadBlobMediaFromLive(blobResult.missing);
     try{localStorage.setItem(CFG.LS_SAVE,expDeck?expDeck.innerHTML:'');localStorage.setItem(CFG.LS_HASH,expMeta?expMeta.getAttribute('content'):'')}catch(e){}
     _setDirty(false);
-    const servedPath=await _findServedSaveAsPath(dirHandle.name,safeName,fullHTML);
-    if(servedPath){
-      _setCurrentFilePath(servedPath);
-      const nextUrl=_servedUrlForRelPath(servedPath);
-      msg('✔ Save As 완료 → 새 파일로 이동 중… '+servedPath
-        +(blobResult.missing.length?' (죽은 blob '+blobResult.missing.length+'개 자동 삭제)':''));
-      setTimeout(()=>{ location.href=nextUrl; },500);
-      return;
-    }
-    msg('✔ Save As 완료 → '+dirHandle.name+'/'+safeName+' (서버 경로가 아니어서 현재 편집 파일은 변경하지 않음)'
+    _setCurrentFilePath(targetPath);
+    msg('✔ Save As 완료 → 새 파일로 이동 중… '+targetPath
       +(blobResult.missing.length?' (죽은 blob '+blobResult.missing.length+'개 자동 삭제)':''));
+    setTimeout(()=>{ location.href=_servedUrlForRelPath(targetPath); },500);
   }catch(e){console.error('[SaveAs]',e);msg('Save As 실패: '+e.message)}
 }
 
