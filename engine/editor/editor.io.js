@@ -459,18 +459,66 @@ function _buildSaveHTML(){
    localhost:3000  → /presentations/xxx/file.html  → 그대로 상대경로
    file://         → 절대 경로에서 PPTX 루트 기준 상대경로 추출 시도
    ────────────────────────────────────────────────────────────── */
+let _currentFilePathOverride='';
+function _normalizeRelPathForEditor(p){
+  return String(p||'').replace(/\\/g,'/').replace(/^\/+/,'');
+}
 function _getFilePath(){
+  if(_currentFilePathOverride)return _currentFilePathOverride;
   const href=location.href;
   /* localhost */
   if(href.includes('localhost')||href.includes('127.0.0.1')){
     /* pathname = /presentations/xxx/file.html → 앞 / 제거 */
-    return decodeURIComponent(location.pathname.replace(/^\//,''));
+    return _normalizeRelPathForEditor(decodeURIComponent(location.pathname.replace(/^\//,'')));
   }
   /* file:// — 절대경로에서 PPTX 루트 이후 부분만 */
   const m=href.match(/[\/\\]PPTX[\/\\](.+\.html)/i);
-  if(m)return m[1].replace(/\\/g,'/');
+  if(m)return _normalizeRelPathForEditor(m[1]);
   /* 최후 수단: 파일명만 */
-  return location.pathname.split('/').pop()||'presentation.html';
+  return _normalizeRelPathForEditor(location.pathname.split('/').pop()||'presentation.html');
+}
+function _setCurrentFilePath(filePath){
+  _currentFilePathOverride=_normalizeRelPathForEditor(filePath);
+}
+function _joinRelPath(){
+  return Array.from(arguments).filter(Boolean).join('/').replace(/\/+/g,'/');
+}
+function _dirnameRelPath(filePath){
+  const p=_normalizeRelPathForEditor(filePath);
+  const i=p.lastIndexOf('/');
+  return i>=0?p.slice(0,i):'';
+}
+function _servedUrlForRelPath(filePath){
+  if(!(location.href.includes('localhost')||location.href.includes('127.0.0.1')))return '';
+  const encoded=_normalizeRelPathForEditor(filePath).split('/').map(encodeURIComponent).join('/');
+  return location.origin.replace(/\/$/,'')+'/'+encoded;
+}
+function _saveAsCandidatePaths(dirName,fileName){
+  const current=_getFilePath();
+  const currentDir=_dirnameRelPath(current);
+  const parentDir=_dirnameRelPath(currentDir);
+  const cleanDir=_normalizeRelPathForEditor(dirName);
+  const candidates=[
+    _joinRelPath(currentDir,fileName),
+    _joinRelPath(parentDir,cleanDir,fileName)
+  ];
+  if(current.indexOf('presentations/')===0)candidates.push(_joinRelPath('presentations',cleanDir,fileName));
+  candidates.push(_joinRelPath(cleanDir,fileName));
+  return candidates.filter((p,i,a)=>p&&a.indexOf(p)===i);
+}
+async function _findServedSaveAsPath(dirName,fileName,html){
+  const candidates=_saveAsCandidatePaths(dirName,fileName);
+  for(const rel of candidates){
+    const url=_servedUrlForRelPath(rel);
+    if(!url)continue;
+    try{
+      const r=await fetch(url+'?v=' + Date.now(),{cache:'no-store',signal:AbortSignal.timeout(1200)});
+      if(!r.ok)continue;
+      const txt=await r.text();
+      if(txt===html)return rel;
+    }catch(e){}
+  }
+  return '';
 }
 
 /* ── Save: 포토샵처럼 현재 파일 직접 덮어씀 ──
@@ -1244,7 +1292,16 @@ async function saveAs(){
     _removeDeadBlobMediaFromLive(blobResult.missing);
     try{localStorage.setItem(CFG.LS_SAVE,expDeck?expDeck.innerHTML:'');localStorage.setItem(CFG.LS_HASH,expMeta?expMeta.getAttribute('content'):'')}catch(e){}
     _setDirty(false);
-    msg('✔ Save As 완료 → '+dirHandle.name+'/'+safeName
+    const servedPath=await _findServedSaveAsPath(dirHandle.name,safeName,fullHTML);
+    if(servedPath){
+      _setCurrentFilePath(servedPath);
+      const nextUrl=_servedUrlForRelPath(servedPath);
+      msg('✔ Save As 완료 → 새 파일로 이동 중… '+servedPath
+        +(blobResult.missing.length?' (죽은 blob '+blobResult.missing.length+'개 자동 삭제)':''));
+      setTimeout(()=>{ location.href=nextUrl; },500);
+      return;
+    }
+    msg('✔ Save As 완료 → '+dirHandle.name+'/'+safeName+' (서버 경로가 아니어서 현재 편집 파일은 변경하지 않음)'
       +(blobResult.missing.length?' (죽은 blob '+blobResult.missing.length+'개 자동 삭제)':''));
   }catch(e){console.error('[SaveAs]',e);msg('Save As 실패: '+e.message)}
 }
