@@ -1471,6 +1471,10 @@ async function _embedGoogleFonts(cl){
 /* Export된 HTML 자체 검증 — 외부 URL/누락 참조 스캔 */
 function _validateExportedHTML(html){
   const warnings=[];
+  /* (0) 발표용 영상 런타임 누락 — export HTML은 presentation.js가 인라인되어야 함 */
+  if(/<video\b/i.test(html) && html.indexOf('__pptxVideoRuntime')<0){
+    warnings.push('영상 제어 런타임 누락 — engine/presentation.js 재인라인 또는 재Export 필요');
+  }
   /* (1) localhost/127.0.0.1 참조 = 절대 금지 (다른 PC에서 깨짐) */
   const localMatches=html.match(/https?:\/\/(localhost|127\.0\.0\.1)[^\s"')]*/g);
   if(localMatches && localMatches.length){

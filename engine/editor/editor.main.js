@@ -316,6 +316,13 @@ function blockFromPointerEvent(e){
   }
   return null;
 }
+function isNativeVideoControlHit(e,v){
+  if(!v||!v.controls||!v.getBoundingClientRect)return false;
+  const r=v.getBoundingClientRect();
+  if(!r.width||!r.height)return false;
+  const controlH=Math.min(72,Math.max(42,r.height*0.18));
+  return e.clientY>=r.bottom-controlH;
+}
 
 /* Click → select element, show toolbar, or drag media directly */
 document.addEventListener('mousedown',e=>{
@@ -326,9 +333,11 @@ document.addEventListener('mousedown',e=>{
 
   const clickedBlock=blockFromPointerEvent(e);
   const isEditingText=e.target.closest&&e.target.closest('[contenteditable="true"]');
+  const clickedVideo=e.target.closest&&e.target.closest('video');
+  const clickedVideoControl=isNativeVideoControlHit(e,clickedVideo);
 
   /* Alt + 드래그 = 단일 블럭 복제 후 드롭 위치로 이동 */
-  if(e.altKey&&clickedBlock&&!isEditingText){
+  if(e.altKey&&clickedBlock&&!isEditingText&&!clickedVideoControl){
     setBlockState(clickedBlock,'select');
     showBar&&showBar(clickedBlock);
     startDuplicateDrag(clickedBlock,e);
@@ -336,7 +345,7 @@ document.addEventListener('mousedown',e=>{
   }
 
   /* Space + 드래그 = 기존 선택 블럭(들) 이동 */
-  if(moveKeyHeld&&clickedBlock&&!isEditingText){
+  if(moveKeyHeld&&clickedBlock&&!isEditingText&&!clickedVideoControl){
     let anchor=selBlock;
     if(!anchor || !selBlocks.includes(clickedBlock)){
       if(selBlocks.length<=1){
@@ -361,6 +370,10 @@ document.addEventListener('mousedown',e=>{
     setBlockState(mw,'select');
     showBar(mw);
     _syncVideoButtons(mw.querySelector('video'));
+    if(clickedVideoControl){
+      _edMarkVideo(clickedVideo);
+      return;
+    }
     startMoveDrag(mw, e);
     return;
   }
@@ -500,6 +513,83 @@ function _syncVideoButtons(v){
   if(bm){bm.textContent=v&&!v.muted?'소리 ON':'소리 OFF';bm.style.color=v&&!v.muted?'var(--g)':'';}
   if(bp){bp.textContent=v&&!v.paused?'⏸ 일시정지':'▶ 재생';bp.style.color=v&&!v.paused?'var(--g)':'';}
 }
+let _edActiveVideo=null;
+const _edEndedVideos=new WeakSet();
+function _edMarkVideo(v){
+  if(!v)return;
+  _edActiveVideo=v;
+  const d=Number(v.duration);
+  if(Number.isFinite(d)&&d>0&&v.currentTime<d-0.15)_edEndedVideos.delete(v);
+  _syncVideoButtons(v);
+}
+function _edIsVideoVisible(v){
+  const s=curSlide&&curSlide();
+  if(!v||!s||!s.contains(v))return false;
+  const cs=getComputedStyle(v);
+  if(cs.display==='none'||cs.visibility==='hidden'||cs.opacity==='0')return false;
+  return v.getClientRects().length>0;
+}
+function _edVisibleVideos(){
+  const s=curSlide&&curSlide();
+  return s?Array.from(s.querySelectorAll('video')).filter(_edIsVideoVisible):[];
+}
+function _edVideoTarget(){
+  const list=_edVisibleVideos();
+  if(!list.length)return null;
+  const playing=list.find(v=>!v.paused&&!v.ended);
+  if(playing){_edMarkVideo(playing);return playing;}
+  if(_edActiveVideo&&list.includes(_edActiveVideo)&&!_edEndedVideos.has(_edActiveVideo))return _edActiveVideo;
+  const selected=_getSelVideo();
+  if(selected&&list.includes(selected)&&!_edEndedVideos.has(selected)){_edMarkVideo(selected);return selected;}
+  const fresh=list.find(v=>!_edEndedVideos.has(v));
+  if(fresh){_edMarkVideo(fresh);return fresh;}
+  return null;
+}
+function _edClampVideoTime(v,t){
+  const d=Number(v.duration);
+  if(Number.isFinite(d)&&d>0)return Math.max(0,Math.min(d,t));
+  return Math.max(0,t);
+}
+function _edHandleVideoKey(e){
+  if(e.ctrlKey||e.metaKey||e.altKey)return false;
+  const k=e.key===' '||e.code==='Space'?'Space':e.key;
+  if(k!=='Space'&&k!=='ArrowLeft'&&k!=='ArrowRight')return false;
+  const v=_edVideoTarget();
+  if(!v)return false;
+  e.preventDefault();
+  e.stopPropagation();
+  _edMarkVideo(v);
+  if(k==='Space'){
+    if(v.paused){try{const p=v.play();if(p&&p.catch)p.catch(()=>{});msg('재생');}catch(_){msg('재생 실패')}}
+    else{try{v.pause();msg('일시정지');}catch(_){}}
+  }else{
+    v.currentTime=_edClampVideoTime(v,(Number(v.currentTime)||0)+(k==='ArrowRight'?5:-5));
+  }
+  _syncVideoButtons(v);
+  return true;
+}
+['pointerdown','mousedown','click','seeking','seeked','play','pause','timeupdate'].forEach(type=>{
+  document.addEventListener(type,e=>{
+    const v=e.target&&e.target.closest&&e.target.closest('video');
+    if(v&&isEd())_edMarkVideo(v);
+  },true);
+});
+document.addEventListener('timeupdate',e=>{
+  const v=e.target;
+  if(!v||v.tagName!=='VIDEO')return;
+  const d=Number(v.duration);
+  if(Number.isFinite(d)&&d>0&&v.currentTime<d-0.15)_edEndedVideos.delete(v);
+},true);
+document.addEventListener('ended',e=>{
+  const v=e.target;
+  if(!v||v.tagName!=='VIDEO'||v.loop)return;
+  const d=Number(v.duration);
+  if(Number.isFinite(d)&&d>0){try{v.currentTime=d;}catch(_){}}
+  try{v.pause();}catch(_){}
+  _edEndedVideos.add(v);
+  if(_edActiveVideo===v)_edActiveVideo=null;
+  _syncVideoButtons(v);
+},true);
 /* 영상 컨트롤 — 속성 변경과 실시간 재생 상태를 동시에 반영.
    · 재생 중이어도 즉시 효과가 나타나도록 play/pause/muted 를 직접 조작한다.
    · autoplay 는 저장 후 재생 시에도 동일하게 작동하도록 속성도 같이 반영. */
@@ -592,6 +682,8 @@ document.addEventListener('keydown',e=>{
   }
   /* Ctrl+D = duplicate element (텍스트 편집 중에는 브라우저 기본 동작 양보) */
   if(e.ctrlKey&&!e.shiftKey&&(e.key==='d'||e.key==='D')&&!editingBlock&&!e.target.isContentEditable){e.preventDefault();dupEl();return}
+
+  if(!e.target.isContentEditable&&_edHandleVideoKey(e))return;
 
   /* ── Space 홀드 = 이동 모드 ── */
   if(e.code==='Space'&&!e.target.isContentEditable&&!e.repeat){
