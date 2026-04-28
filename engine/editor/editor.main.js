@@ -61,10 +61,19 @@ function startDrag(el,e){
 function attachHandles(){
   document.querySelectorAll('.ed-drag-handle,.ed-block-resize,.ed-block-resize-w,.ed-block-resize-e').forEach(h=>h.remove());
   const s=curSlide();if(!s)return;
+  const activeHandles = new Set();
+  if(selBlocks&&selBlocks.length>1){
+    selBlocks.forEach(b=>{if(b&&b.closest&&b.closest('.slide')===s)activeHandles.add(b);});
+  }else{
+    const one=selBlock||sel;
+    if(one&&one.closest&&one.closest('.slide')===s)activeHandles.add(one);
+  }
+  if(!activeHandles.size)return;
   /* 레이아웃 래퍼(.principle-grid2, .joka-grid, .num-grid, .flow)는 제외 — 블럭 아님 */
-  const targets=s.querySelectorAll('[data-step], .two-col, .code-block, .card, .principle-card, .joka-cell, .num-item, .flow-step, table, .ed-media-wrap');
+  const targets=s.querySelectorAll(BLOCK.TARGET_SEL);
   targets.forEach(el=>{
     if(el.closest('.speaker-notes'))return;
+    if(!activeHandles.has(el))return;
     if(getComputedStyle(el).position==='static')el.style.position='relative';
     /* Drag handle */
     const h=document.createElement('div');h.className='ed-drag-handle';h.textContent='⠿';
@@ -74,17 +83,7 @@ function attachHandles(){
     if(el.classList.contains('ed-media-wrap')&&!el.querySelector('.ed-resize-handle')){
       const rh=document.createElement('div');rh.className='ed-resize-handle';
       rh.addEventListener('mousedown',e=>{
-        e.preventDefault();e.stopPropagation();push();
-        const media=el.querySelector('img,video,iframe');if(!media)return;
-        const sc=pAPI.deckScale;
-        const sx=e.clientX,sw=media.offsetWidth;
-        const mv=ev=>{
-          const nw=Math.max(CFG.MEDIA_MIN_W,sw+(ev.clientX-sx)/sc);
-          media.style.width=nw+'px';
-          media.style.height='auto';
-        };
-        const up=()=>{document.removeEventListener('mousemove',mv);document.removeEventListener('mouseup',up)};
-        document.addEventListener('mousemove',mv);document.addEventListener('mouseup',up);
+        if(typeof _startMediaScaleDrag==='function')_startMediaScaleDrag(el,e);
       });
       el.appendChild(rh);
     }
@@ -93,6 +92,10 @@ function attachHandles(){
       const d=document.createElement('button');d.className='ed-media-del';d.textContent='✕';
       d.onclick=()=>{push();el.remove();attachHandles();msg('삭제')};
       el.insertBefore(d,el.firstChild);
+    }
+    /* Media-wrap: ensure 4-side crop handles exist (works for saved HTML too) */
+    if(el.classList.contains('ed-media-wrap')&&typeof _attachCropHandles==='function'){
+      _attachCropHandles(el);
     }
     /* Resize handles — text blocks only (not media-wrap, which has its own).
        Bottom-right corner: uniform scale (existing behaviour).
@@ -252,8 +255,8 @@ function attachHandles(){
 
       /* store posRW/posRE refs for drag-move sync */
       rh._posRW=posRW;rh._posRE=posRE;
-      rhW._posRH=posRH;rhW._posRE=posRE;
-      rhE._posRH=posRH;rhE._posRW=posRW;
+      rhW._posMain=posRH;rhW._posRE=posRE;
+      rhE._posMain=posRH;rhE._posRW=posRW;
     }
   });
   s.querySelectorAll('img').forEach(img=>{img.draggable=false;img.addEventListener('dragstart',e=>e.preventDefault())});
@@ -290,6 +293,30 @@ function toggle(){
 /* ============================================================
    EVENT HANDLERS
    ============================================================ */
+function blockFromPointerEvent(e){
+  let b=findBlock(e.target);
+  if(b)return b;
+  if(document.elementsFromPoint){
+    const stack=document.elementsFromPoint(e.clientX,e.clientY);
+    for(const el of stack){
+      b=findBlock(el);
+      if(b)return b;
+    }
+  }
+  const picked=[];
+  if(selBlocks&&selBlocks.length)picked.push(...selBlocks);
+  if(selBlock)picked.push(selBlock);
+  for(const el of [...new Set(picked)]){
+    if(!el||!el.getBoundingClientRect)continue;
+    const r=el.getBoundingClientRect();
+    const pad=10;
+    if(e.clientX>=r.left-pad&&e.clientX<=r.right+pad&&e.clientY>=r.top-pad&&e.clientY<=r.bottom+pad){
+      return el;
+    }
+  }
+  return null;
+}
+
 /* Click → select element, show toolbar, or drag media directly */
 document.addEventListener('mousedown',e=>{
   if(!isEd())return;
@@ -297,26 +324,29 @@ document.addEventListener('mousedown',e=>{
 
   if(suppressNextSelect){suppressNextSelect=false;return;}
 
-  /* ── Space/Alt + 드래그 = 블럭 이동 (A3) ── */
-  if(moveKeyHeld||e.altKey){
-    /* 클릭 지점의 블럭을 이동 대상으로 */
-    let anchor = selBlock;
-    const clickedBlock = findBlock(e.target);
-    /* 선택된 블럭이 없거나 클릭한 게 다른 블럭이면 먼저 선택 */
-    if(!anchor || (clickedBlock && !selBlocks.includes(clickedBlock))){
-      if(clickedBlock){
-        /* 다중 선택 상태가 아니면 새로 선택 */
-        if(selBlocks.length<=1){
-          setBlockState(clickedBlock,'select');
-          showBar&&showBar(clickedBlock);
-        }
-        anchor = clickedBlock;
+  const clickedBlock=blockFromPointerEvent(e);
+  const isEditingText=e.target.closest&&e.target.closest('[contenteditable="true"]');
+
+  /* Alt + 드래그 = 단일 블럭 복제 후 드롭 위치로 이동 */
+  if(e.altKey&&clickedBlock&&!isEditingText){
+    setBlockState(clickedBlock,'select');
+    showBar&&showBar(clickedBlock);
+    startDuplicateDrag(clickedBlock,e);
+    return;
+  }
+
+  /* Space + 드래그 = 기존 선택 블럭(들) 이동 */
+  if(moveKeyHeld&&clickedBlock&&!isEditingText){
+    let anchor=selBlock;
+    if(!anchor || !selBlocks.includes(clickedBlock)){
+      if(selBlocks.length<=1){
+        setBlockState(clickedBlock,'select');
+        showBar&&showBar(clickedBlock);
       }
+      anchor=clickedBlock;
     }
-    if(anchor){
-      startMoveDrag(anchor,e);
-      return;
-    }
+    startMoveDrag(anchor,e);
+    return;
   }
 
   /* media wrap — 클릭 = 선택 + 바로 드래그 이동 (alt 필요 없음).
@@ -325,7 +355,7 @@ document.addEventListener('mousedown',e=>{
   const mw=e.target.closest('.ed-media-wrap');
   if(mw){
     /* 리사이즈 핸들/삭제 버튼/영상 컨트롤 등 내부 UI 클릭은 드래그 금지 */
-    if(e.target.closest('.ed-resize-handle,.ed-media-del,.ed-block-resize,.ed-block-resize-w,.ed-block-resize-e')){
+    if(e.target.closest('.ed-resize-handle,.ed-media-del,.ed-crop-handle,.ed-block-resize,.ed-block-resize-w,.ed-block-resize-e')){
       return;
     }
     setBlockState(mw,'select');
@@ -344,6 +374,17 @@ document.addEventListener('mousedown',e=>{
       tbClosed=false;
       return;
     }
+  }
+
+  /* 일반 블럭도 미디어처럼 본체 드래그로 이동 */
+  if(clickedBlock&&!isEditingText){
+    if(!(selBlocks&&selBlocks.length>1&&selBlocks.includes(clickedBlock))){
+      setBlockState(clickedBlock,'select');
+      showBar&&showBar(clickedBlock);
+    }
+    startMoveDrag(clickedBlock,e);
+    tbClosed=false;
+    return;
   }
 
   /* 블럭 시스템 v2 — 한 겹 파고들기 */
@@ -369,7 +410,21 @@ document.addEventListener('dblclick',e=>{
     if(window.PanelCtx&&PanelCtx.refresh)PanelCtx.refresh(mw, selBlocks, selBlock);
     return;
   }
-  /* 일반 블럭은 mousedown에서 이미 처리됨. 텍스트 선택 방지만. */
+  const blk=findBlock(e.target);
+  if(blk){
+    e.preventDefault();
+    e.stopPropagation();
+    let leaf=blk;
+    while(leaf&&!isLeafBlock(leaf)){
+      const child=drillDownBlock(leaf,e.clientX,e.clientY);
+      if(!child)break;
+      leaf=child;
+    }
+    if(leaf){
+      setBlockState(leaf,'edit');
+      showBar&&showBar(leaf);
+    }
+  }
 });
 
 /* Format commands */
@@ -476,17 +531,47 @@ function toggleVideoPlay(){
   _syncVideoButtons(v);
 }
 function dupEl(){
-  if(!sel)return;push();const c=sel.cloneNode(true);
-  /* Offset the duplicate */
-  const lPx=parseFloat(c.style.left||0),tPx=parseFloat(c.style.top||0);
-  c.style.left=(lPx+CFG.DUP_OFFSET)+'px';c.style.top=(tPx+CFG.DUP_OFFSET)+'px';
-  sel.after(c);attachHandles();msg('복제');
+  const source=currentBlock&&currentBlock()||sel;
+  if(!source)return;push();
+  materializeForBlocks([source]);
+  const c=cloneBlockForDuplicate(source);
+  if(!c)return;
+  if(typeof placeDuplicateBlockAtSource!=='function')return;
+  if(!placeDuplicateBlockAtSource(source,c,CFG.DUP_OFFSET,CFG.DUP_OFFSET))return;
+  attachHandles&&attachHandles();on&&on();
+  setBlockState(c,'select');showBar&&showBar(c);
+  msg('복제');
 }
 function setSlideBg(c){push();curSlide().style.background=c;$('edSlideBg').value=c}
 
 /* Keyboard shortcuts */
 document.addEventListener('keydown',e=>{
   if(!isEd())return;
+  /* ────────────────────────────────────────────────────────────
+     v2.1 가드 — 패널/툴바/내비 input·textarea·select 안에서는
+     에디터 단축키를 모두 양보한다 (Backspace로 블럭 삭제되는 사고 방지).
+     단, Ctrl+S(save), Ctrl+Z(undo) 같은 글로벌 단축키는 패널 안에서도 살아있어야 하므로
+     아래 분기에서 Ctrl/Meta 조합은 통과시키고, 나머지 일반 키 입력만 차단한다.
+     ──────────────────────────────────────────────────────────── */
+  const _t=e.target;
+  const _tag=_t&&_t.tagName;
+  const _isFormControl=(_tag==='INPUT'||_tag==='TEXTAREA'||_tag==='SELECT');
+  const _inUI=_t&&_t.closest&&_t.closest('.ed-panel, .ed-toolbar, .ed-nav, .ed-confirm, .ed-ctx-menu');
+  /* F2 = 현재 선택된 슬라이드 이름 변경 */
+  if(e.key==='F2'&&!e.ctrlKey&&!e.metaKey&&!e.altKey&&!e.shiftKey&&!e.target.isContentEditable){
+    e.preventDefault();
+    renameSlide(pAPI.S.cur);
+    return;
+  }
+  if((_isFormControl||_inUI)&&!_t.isContentEditable){
+    /* 글로벌 save/undo/redo만 통과시키고 그 외 키는 모두 양보 */
+    const _isGlobal = (e.ctrlKey||e.metaKey) && (
+      e.key==='s'||e.key==='S'||
+      e.key==='z'||e.key==='Z'||
+      e.key==='y'||e.key==='Y'
+    );
+    if(!_isGlobal)return;
+  }
   /* Ctrl+S = save */
   if(e.ctrlKey&&e.key==='s'&&!e.shiftKey){e.preventDefault();save();return}
   /* Ctrl+Shift+S = export (presentation-only file) */
@@ -505,8 +590,8 @@ document.addEventListener('keydown',e=>{
     if(e.target.isContentEditable)return;
     e.preventDefault();redo();return;
   }
-  /* Ctrl+D = duplicate element */
-  if(e.ctrlKey&&(e.key==='d'||e.key==='D')){e.preventDefault();dupEl();return}
+  /* Ctrl+D = duplicate element (텍스트 편집 중에는 브라우저 기본 동작 양보) */
+  if(e.ctrlKey&&!e.shiftKey&&(e.key==='d'||e.key==='D')&&!editingBlock&&!e.target.isContentEditable){e.preventDefault();dupEl();return}
 
   /* ── Space 홀드 = 이동 모드 ── */
   if(e.code==='Space'&&!e.target.isContentEditable&&!e.repeat){
@@ -541,8 +626,8 @@ document.addEventListener('keydown',e=>{
     e.preventDefault();
     const d=e.shiftKey?(CFG.NUDGE_LG||10):(CFG.NUDGE_SM||1);
     push();
+    materializeForBlocks(targets);
     targets.forEach(b=>{
-      if(!b.classList.contains('ed-media-wrap'))b.style.position='relative';
       let lPx=parseFloat(b.style.left)||0, tPx=parseFloat(b.style.top)||0;
       if(e.key==='ArrowLeft')lPx-=d;
       if(e.key==='ArrowRight')lPx+=d;
@@ -562,10 +647,7 @@ document.addEventListener('keydown',e=>{
     if(selBlocks.length>1){
       e.preventDefault();push();
       const toDel=[...selBlocks];
-      toDel.forEach(b=>{
-        b.querySelectorAll(BLOCK.ARTIFACT_SEL).forEach(a=>a.remove());
-        b.remove();
-      });
+      _removeBlocksPreservingFlow(toDel);
       selBlocks=[];selBlock=null;editingBlock=null;
       if(typeof _setSel==='function')_setSel(null);
       attachHandles&&attachHandles();
@@ -631,19 +713,23 @@ document.addEventListener('keydown',e=>{
   if(e.ctrlKey&&e.shiftKey&&(e.key==='g'||e.key==='G')){
     if(selBlock){e.preventDefault();ungroupBlockUnwrap(selBlock);return;}
   }
-  /* Ctrl+D — 복제 (EDITING 아닐 때만) */
-  if(e.ctrlKey&&!e.shiftKey&&(e.key==='d'||e.key==='D')&&!editingBlock&&selBlock){
-    e.preventDefault();
-    push();
-    const c=selBlock.cloneNode(true);
-    c.querySelectorAll(BLOCK.ARTIFACT_SEL).forEach(a=>a.remove());
-    const lPx=parseFloat(c.style.left||0),tPx=parseFloat(c.style.top||0);
-    c.style.left=(lPx+CFG.DUP_OFFSET)+'px';c.style.top=(tPx+CFG.DUP_OFFSET)+'px';
-    selBlock.after(c);
-    attachHandles&&attachHandles();on&&on();
-    setBlockState(c,'select');showBar&&showBar(c);
-    msg('복제');_setDirty(true);
-    return;
+  /* W — Wrap in Card / Shift+W — Wrap in Frame (v2.1, EDITING 제외) */
+  if(!editingBlock&&!e.target.isContentEditable&&!e.ctrlKey&&!e.metaKey&&!e.altKey&&(e.key==='w'||e.key==='W')){
+    const targets=selBlocks.length?selBlocks:(selBlock?[selBlock]:[]);
+    if(targets.length){
+      e.preventDefault();
+      if(e.shiftKey)wrapBlocks(targets,{mode:'frame',layout:null,autoSeq:false});
+      else          wrapBlocks(targets,{mode:'card', layout:'v',autoSeq:true,gap:12,padding:16});
+      return;
+    }
+  }
+  /* Ctrl+Alt+K — Create Component */
+  if(e.ctrlKey&&e.altKey&&(e.key==='k'||e.key==='K')){
+    if(selBlock){e.preventDefault();makeComponent(selBlock);return;}
+  }
+  /* Ctrl+Alt+B — Detach Instance */
+  if(e.ctrlKey&&e.altKey&&(e.key==='b'||e.key==='B')){
+    if(selBlock){e.preventDefault();detachInstance(selBlock);return;}
   }
 });
 
@@ -657,7 +743,10 @@ document.addEventListener('keyup',e=>{
 /* 창 포커스 나갔다 들어오면 moveKeyHeld 리셋 (키업 놓침 방지) */
 window.addEventListener('blur',()=>{moveKeyHeld=false;document.body.classList.remove('ed-move-mode');});
 
-document.addEventListener('focusout',e=>{if(e.target.isContentEditable&&isEd()){push();buildNav();_setDirty(true)}});
+document.addEventListener('focusout',e=>{
+  if(e.target.closest&&e.target.closest('.ed-nav-title'))return;
+  if(e.target.isContentEditable&&isEd()){push();buildNav();_setDirty(true)}
+});
 
 /* Click-to-play/pause in presentation mode (only when clicking the wrap, not native controls) */
 document.addEventListener('click',e=>{
@@ -675,23 +764,48 @@ document.addEventListener('click',e=>{
 /* ============================================================
    PUBLIC API — single entry point, all methods exposed
    ============================================================ */
+function setStepOrder(v){
+  const targets=selBlocks.length?selBlocks:(selBlock?[selBlock]:(sel?[sel]:[]));
+  if(!targets.length){msg('블럭을 먼저 선택하세요');return;}
+  const raw=String(v==null?'':v).trim();
+  if(raw!==''){
+    const n=parseFloat(raw);
+    if(!Number.isFinite(n)||n<=0){msg('등장 순서는 1 이상의 숫자');return;}
+  }
+  push();
+  if(raw===''){
+    targets.forEach(el=>{el.removeAttribute('data-sort');el.removeAttribute('data-step-lock');});
+    msg('등장 순서 자동');
+  }else{
+    const n=parseFloat(raw);
+    targets.forEach(el=>{
+      el.setAttribute('data-sort',String(n));
+      el.setAttribute('data-step',String(n));
+      el.removeAttribute('data-step-auto');
+    });
+    msg('등장 순서 '+n);
+  }
+  _setDirty(true);
+  if(window.pAPI&&pAPI.reinit){pAPI.reinit();pAPI.S.step=pAPI.S.info[pAPI.S.cur].max;pAPI.render();}
+  if(window.PanelCtx&&PanelCtx.refresh)PanelCtx.refresh(sel, selBlocks, selBlock);
+}
 window.EA={
   toggle, addSlide, insertImage, insertImageURL, insertVideo, insertVideoFile,
   duplicateSlide:()=>dupAt(pAPI.S.cur), deleteSlide:()=>delAt(pAPI.S.cur), dupAt, delAt,
   insertBlankAfter:(i)=>insertBlankAfter(typeof i==='number'?i:pAPI.S.cur),
   moveSlide, renameSlide,
   save, saveAs, exportHTML, resetAll, undo, redo, downloadHTML, execCmd, setAlign, setSizeMode, setSize, setColor,
-  autoStepBySlide,
+  autoStepBySlide, setStepOrder,
   setLineHeight, setLetterSpacing, alignEl, zIndex, duplicateEl:dupEl,
   setSlideBg, setPalette, savePalette, loadPalette, savePaletteFile, loadPaletteFile, resetSlide, updateGrid:upGrid,
   minimizeToolbar:minBar, closeToolbar:closeBar, toggleVideoAutoplay, toggleVideoLoop, toggleVideoMute, toggleVideoPlay,
-  applyAnim, removeAnim, _sw:sw,
+  applyAnim, removeAnim, resetAnim, _sw:sw,
   /* ── 블럭 시스템 v2 ── 툴바 ✕ 버튼용 */
   deleteElement: ()=>{
     if(selBlocks.length>1){
       push();
       const toDel=[...selBlocks];
-      toDel.forEach(b=>{b.querySelectorAll(BLOCK.ARTIFACT_SEL).forEach(a=>a.remove());b.remove();});
+      _removeBlocksPreservingFlow(toDel);
       selBlocks=[];selBlock=null;editingBlock=null;
       attachHandles&&attachHandles();hideBar();_setDirty(true);msg(toDel.length+'개 블럭 삭제');
       return;
@@ -734,8 +848,60 @@ window.EA={
     }
     _setDirty(true);
     if(window.pAPI && window.pAPI.reinit) window.pAPI.reinit();
+  },
+  /* ─── BLOCK SYSTEM v2.1 — Group / Auto-Layout / Component / Constraints ─── */
+  _wrapTargets: ()=>(selBlocks.length?selBlocks:(selBlock?[selBlock]:[])),
+  wrapAsCard: ()=>{
+    const t=(selBlocks.length?selBlocks:(selBlock?[selBlock]:[]));
+    if(!t.length){msg('블럭을 먼저 선택하세요');return;}
+    /* v2.1: Card 디폴트 = Auto Layout V + gap 12 + pad 16 (피그마 방식) */
+    wrapBlocks(t,{mode:'card',layout:'v',autoSeq:true,gap:12,padding:16});
+  },
+  wrapAsFrame: ()=>{
+    const t=(selBlocks.length?selBlocks:(selBlock?[selBlock]:[]));
+    if(!t.length){msg('블럭을 먼저 선택하세요');return;}
+    wrapBlocks(t,{mode:'frame',layout:null,autoSeq:false});
+  },
+  unwrapBlock: ()=>{
+    if(!selBlock){msg('컨테이너 블럭을 선택하세요');return;}
+    unwrapBlock(selBlock);
+  },
+  setLayout: (dir)=>{ if(selBlock)setLayoutDirection(selBlock,dir); },
+  setGap:    (px)=>{ if(selBlock)setLayoutGap(selBlock,px); },
+  setPadding:(t,r,b,l)=>{ if(selBlock)setLayoutPadding(selBlock,t,r,b,l); },
+  setLayoutAlign:(a)=>{ if(selBlock)setLayoutAlign(selBlock,a); },
+  setCrop, readCrop, resetCrop, setCropScale, resetCropScale,
+  makeComponent: ()=>{ if(selBlock)makeComponent(selBlock); else msg('블럭을 선택하세요'); },
+  detachInstance: ()=>{ if(selBlock)detachInstance(selBlock); else msg('인스턴스를 선택하세요'); },
+  setConstraintH:(v)=>{ if(selBlock)setConstraint(selBlock,'h',v); },
+  setConstraintV:(v)=>{ if(selBlock)setConstraint(selBlock,'v',v); },
+  _readGroupAttrs: ()=>{
+    if(!selBlock)return null;
+    return {
+      mode: selBlock.getAttribute('data-group-mode')||'',
+      layout: selBlock.getAttribute('data-layout')||'',
+      gap: selBlock.getAttribute('data-gap')||'',
+      pad:  selBlock.getAttribute('data-pad')||'',
+      padT: selBlock.getAttribute('data-pad-t')||'',
+      padR: selBlock.getAttribute('data-pad-r')||'',
+      padB: selBlock.getAttribute('data-pad-b')||'',
+      padL: selBlock.getAttribute('data-pad-l')||'',
+      align: selBlock.getAttribute('data-align')||'',
+      isComponent: selBlock.classList.contains('ed-component'),
+      isInstance:  selBlock.classList.contains('ed-instance'),
+      constrainH:  selBlock.getAttribute('data-constrain-h')||'left',
+      constrainV:  selBlock.getAttribute('data-constrain-v')||'top'
+    };
   }
 };
+/* Component observer 초기화 (deck 준비 후) */
+try{ if(typeof _initComponentObserver==='function')_initComponentObserver(); }catch(e){ console.warn('Component observer init failed:', e); }
+/* 마이그레이션: 기존 .ed-group 요소에 data-group-mode 자동 부여 (1회) */
+try{
+  document.querySelectorAll('.ed-group:not([data-group-mode])').forEach(el=>{
+    el.setAttribute('data-group-mode', el.classList.contains('ed-group-frame')?'frame':'card');
+  });
+}catch(e){}
 /* Always init guide on load and on resize */
 upGuide();
 window.addEventListener('resize',()=>requestAnimationFrame(upGuide));

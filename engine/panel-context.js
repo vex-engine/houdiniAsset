@@ -77,6 +77,7 @@
   + '    <button class="ed-anim-apply" onclick="EA.applyAnim&&EA.applyAnim(\'block\')">Apply Block</button>'
   + '    <button class="ed-anim-apply" onclick="EA.applyAnim&&EA.applyAnim(\'sel\')">Apply Selection</button>'
   + '    <button class="ed-anim-remove" onclick="EA.removeAnim&&EA.removeAnim()">Remove</button>'
+  + '    <button class="ed-anim-reset" onclick="EA.resetAnim&&EA.resetAnim()" title="Restore original text state">Reset</button>'
   + '  </div>'
   + '</div>';
 
@@ -97,7 +98,7 @@
   const SEC_MOVE_HINT = ''
   + '<div class="ed-section"><div class="ed-section-title">Shortcuts</div>'
   + '  <div style="font-size:12px;color:#bbb;line-height:1.6;padding:6px 0">'
-  + '    <div>• <b style="color:#3ECF8E">Space/Alt + Drag</b>: Move</div>'
+  + '    <div>• <b style="color:#3ECF8E">Drag</b>: Move / <b style="color:#3ECF8E">Alt + Drag</b>: Duplicate</div>'
   + '    <div>• <b style="color:#3ECF8E">Arrows</b>: 1px / Shift: 10px</div>'
   + '    <div>• <b style="color:#3ECF8E">Double-click</b>: Edit</div>'
   + '    <div>• <b style="color:#3ECF8E">Shift+Click</b>: Multi-select</div>'
@@ -181,11 +182,21 @@
   + '  <div id="pcAnimChildrenInfo" style="font-size:12px;color:#bbb;line-height:1.5;padding:4px 0 0 0">Direct children of the selected block appear one-by-one on scroll/space.</div>'
   + '</div>';
 
+  const SEC_STEP_ORDER = ''
+  + '<div class="ed-section"><div class="ed-section-title">Reveal Order</div>'
+  + '  <div style="display:flex;gap:6px;align-items:center">'
+  + '    <input type="number" class="pc-num-input" id="pcStepOrder" min="1" step="1" placeholder="Auto" oninput="EA.setStepOrder&&EA.setStepOrder(this.value)" onchange="EA.setStepOrder&&EA.setStepOrder(this.value)" onkeydown="if(event.key===\'Enter\')EA.setStepOrder&&EA.setStepOrder(this.value)">'
+  + '    <button class="ed-btn" style="flex:1;text-align:center" onclick="var e=document.getElementById(\'pcStepOrder\');if(e)e.value=\'\';EA.setStepOrder&&EA.setStepOrder(\'\')">Auto</button>'
+  + '  </div>'
+  + '  <div style="font-size:11px;color:#aaa;line-height:1.4;padding-top:5px">Same number appears together.</div>'
+  + '</div>';
+
   const SEC_IMG_PROPS = ''
   + '<div class="ed-section"><div class="ed-section-title" style="color:#3ECF8E">🖼 Image</div>'
   + '  <div style="font-size:12px;color:#bbb;line-height:1.6;padding:6px 0">'
   + '    Drag corner: Resize<br>'
-  + '    Space/Alt + Drag: Move'
+  + '    Drag: Move<br>'
+  + '    Alt + Drag: Duplicate'
   + '  </div>'
   + '</div>';
 
@@ -198,29 +209,114 @@
   + '  <div style="font-size:12px;color:#bbb;line-height:1.5;padding:6px 0 0 0">💡 If panel hidden during playback, <b style="color:#3ECF8E">Double-click</b></div>'
   + '</div>';
 
+  /* ✂ Crop — 이미지/영상 공용. 픽셀 절대값 4방향 + Scale */
+  const SEC_CROP = ''
+  + '<div class="ed-section pc-crop-panel"><div class="ed-section-title" style="color:#FFB300">✂ Crop</div>'
+  + '  <div class="pc-help">프레임은 T/R/B/L px로 자르고, Scale은 미디어와 프레임을 함께 키웁니다.</div>'
+  + '  <div class="pc-crop-grid">'
+  + '    <label>Top <input type="number" class="pc-num-input" id="pcCropT" placeholder="0" min="0" step="1" oninput="PanelCtx._applyCrop()"></label>'
+  + '    <label>Right <input type="number" class="pc-num-input" id="pcCropR" placeholder="0" min="0" step="1" oninput="PanelCtx._applyCrop()"></label>'
+  + '    <label>Bottom <input type="number" class="pc-num-input" id="pcCropB" placeholder="0" min="0" step="1" oninput="PanelCtx._applyCrop()"></label>'
+  + '    <label>Left <input type="number" class="pc-num-input" id="pcCropL" placeholder="0" min="0" step="1" oninput="PanelCtx._applyCrop()"></label>'
+  + '  </div>'
+  + '  <div class="pc-crop-scale">'
+  + '    <div class="pc-crop-scale-head"><span>Scale</span><input type="number" class="pc-num-input" id="pcCropScale" value="1" step="0.05" min="0.1" max="8" oninput="PanelCtx._applyCropScale(this.value)"></div>'
+  + '    <input type="range" id="pcCropScaleRange" min="0.1" max="4" step="0.05" value="1" oninput="PanelCtx._applyCropScale(this.value)">'
+  + '  </div>'
+  + '  <div class="pc-crop-actions">'
+  + '    <button class="ed-btn" onclick="EA.resetCrop&&EA.resetCrop()"><span class="ed-btn-icon">↺</span>Reset Crop</button>'
+  + '    <button class="ed-btn" onclick="EA.resetCropScale&&EA.resetCropScale()">Reset Scale</button>'
+  + '  </div>'
+  + '</div>';
+
   const SEC_MULTI_HINT = ''
   + '<div class="ed-section"><div class="ed-section-title" style="color:#3ECF8E">⊟ Multi-select</div>'
   + '  <div style="font-size:12px;color:#bbb;line-height:1.6;padding:6px 0" id="pcMultiCount">Multiple</div>'
   + '</div>';
 
-  /* ---------- Context 조합 ---------- */
+  /* v2.1 — Group actions (Wrap as Card / Frame, Unwrap) */
+  const SEC_GROUP_ACTIONS = ''
+  + '<div class="ed-section"><div class="ed-section-title">Group</div>'
+  + '  <div style="display:flex;gap:5px">'
+  + '    <button class="ed-btn" style="flex:1;text-align:center" onclick="EA.wrapAsCard&&EA.wrapAsCard()" title="W"><span class="ed-btn-icon">⊟</span>Wrap in Card</button>'
+  + '    <button class="ed-btn" style="flex:1;text-align:center" onclick="EA.wrapAsFrame&&EA.wrapAsFrame()" title="Shift+W"><span class="ed-btn-icon">⊡</span>Wrap in Frame</button>'
+  + '  </div>'
+  + '  <button class="ed-btn" style="width:100%;margin-top:4px" onclick="EA.unwrapBlock&&EA.unwrapBlock()" title="Ctrl+Shift+G"><span class="ed-btn-icon">↗</span>Unwrap</button>'
+  + '</div>';
+
+  /* v2.1 — Auto Layout (group 컨텍스트 전용) */
+  const SEC_AUTO_LAYOUT = ''
+  + '<div class="ed-section" id="pcAutoLayoutSec"><div class="ed-section-title">Auto Layout</div>'
+  + '  <div class="pc-direction-row" style="margin-bottom:8px">'
+  + '    <button id="pcLayH"   onclick="EA.setLayout&&EA.setLayout(\'h\');PanelCtx._refreshLayoutUI()">→ H</button>'
+  + '    <button id="pcLayV"   onclick="EA.setLayout&&EA.setLayout(\'v\');PanelCtx._refreshLayoutUI()">↓ V</button>'
+  + '    <button id="pcLayOff" onclick="EA.setLayout&&EA.setLayout(\'\');PanelCtx._refreshLayoutUI()">Off</button>'
+  + '  </div>'
+  + '  <div class="pc-row" style="margin-bottom:8px;display:flex;align-items:center;gap:6px">'
+  + '    <label class="pc-label" style="min-width:30px;font-size:10px;color:#bbb">Gap</label>'
+  + '    <input class="pc-num-input" id="pcGap" placeholder="0" onchange="EA.setGap&&EA.setGap(this.value)">'
+  + '    <span style="font-size:10px;color:#888">px</span>'
+  + '  </div>'
+  + '  <div style="margin-bottom:6px;font-size:10px;color:#bbb;font-family:JetBrains Mono,monospace">PADDING</div>'
+  + '  <div class="pc-pad-grid">'
+  + '    <div><label>T</label><input class="pc-num-input" id="pcPadT" placeholder="0" onchange="PanelCtx._applyPad()"></div>'
+  + '    <div><label>R</label><input class="pc-num-input" id="pcPadR" placeholder="0" onchange="PanelCtx._applyPad()"></div>'
+  + '    <div><label>B</label><input class="pc-num-input" id="pcPadB" placeholder="0" onchange="PanelCtx._applyPad()"></div>'
+  + '    <div><label>L</label><input class="pc-num-input" id="pcPadL" placeholder="0" onchange="PanelCtx._applyPad()"></div>'
+  + '  </div>'
+  + '  <div style="display:flex;gap:4px;margin-top:8px">'
+  + '    <button class="ed-btn" style="flex:1;font-size:10px;text-align:center" onclick="EA.setLayoutAlign&&EA.setLayoutAlign(\'start\')">Start</button>'
+  + '    <button class="ed-btn" style="flex:1;font-size:10px;text-align:center" onclick="EA.setLayoutAlign&&EA.setLayoutAlign(\'center\')">Center</button>'
+  + '    <button class="ed-btn" style="flex:1;font-size:10px;text-align:center" onclick="EA.setLayoutAlign&&EA.setLayoutAlign(\'end\')">End</button>'
+  + '    <button class="ed-btn" style="flex:1;font-size:10px;text-align:center" onclick="EA.setLayoutAlign&&EA.setLayoutAlign(\'stretch\')">Stretch</button>'
+  + '  </div>'
+  + '</div>';
+
+  /* v2.1 — Component / Instance */
+  const SEC_COMPONENT = ''
+  + '<div class="ed-section"><div class="ed-section-title">Component</div>'
+  + '  <button class="ed-btn" style="width:100%;text-align:center" onclick="EA.makeComponent&&EA.makeComponent()" title="Ctrl+Alt+K"><span class="ed-btn-icon">◇</span>Create Component</button>'
+  + '  <button class="ed-btn" style="width:100%;margin-top:4px;text-align:center" onclick="EA.detachInstance&&EA.detachInstance()" title="Ctrl+Alt+B"><span class="ed-btn-icon">◈</span>Detach Instance</button>'
+  + '</div>';
+
+  /* v2.1 — Constraints */
+  const SEC_CONSTRAINTS = ''
+  + '<div class="ed-section collapsible collapsed"><div class="ed-section-title" onclick="this.parentNode.classList.toggle(\'collapsed\')">Constraints</div>'
+  + '  <div class="ed-section-body">'
+  + '    <div class="pc-row" style="display:flex;align-items:center;gap:6px;margin-bottom:6px">'
+  + '      <label class="pc-label" style="min-width:18px;font-size:10px;color:#bbb">H</label>'
+  + '      <select class="pc-size-select" id="pcConstrainH" onchange="EA.setConstraintH&&EA.setConstraintH(this.value)">'
+  + '        <option value="left">Left</option><option value="center">Center</option>'
+  + '        <option value="right">Right</option><option value="l-r">L+R</option><option value="scale">Scale</option>'
+  + '      </select>'
+  + '    </div>'
+  + '    <div class="pc-row" style="display:flex;align-items:center;gap:6px">'
+  + '      <label class="pc-label" style="min-width:18px;font-size:10px;color:#bbb">V</label>'
+  + '      <select class="pc-size-select" id="pcConstrainV" onchange="EA.setConstraintV&&EA.setConstraintV(this.value)">'
+  + '        <option value="top">Top</option><option value="center">Center</option>'
+  + '        <option value="bottom">Bottom</option><option value="t-b">T+B</option><option value="scale">Scale</option>'
+  + '      </select>'
+  + '    </div>'
+  + '  </div>'
+  + '</div>';
+
+  /* ---------- Context 조합 (v2.1: group 신설, multi에 GROUP 액션 추가) ---------- */
   const CONTEXTS = {
     none:  SEC_MEDIA + SEC_BG + SEC_GRID + SEC_BLOCK_ADD + SEC_MOVE_HINT,
-    text:  SEC_TEXT_HINT + SEC_TEXT_EDITOR + SEC_TEXT_ADVANCED + SEC_ANIM_CHILDREN + SEC_ANIM + SEC_ALIGN + SEC_LAYER + SEC_DUPE_DEL,
-    image: SEC_IMG_PROPS + SEC_ANIM_CHILDREN + SEC_ANIM + SEC_ALIGN + SEC_LAYER + SEC_DUPE_DEL,
-    video: SEC_VIDEO_PROPS + SEC_ANIM_CHILDREN + SEC_ANIM + SEC_ALIGN + SEC_LAYER + SEC_DUPE_DEL,
-    multi: SEC_MULTI_HINT + SEC_ALIGN + SEC_LAYER + SEC_DUPE_DEL
+    text:  SEC_TEXT_HINT + SEC_TEXT_EDITOR + SEC_TEXT_ADVANCED + SEC_STEP_ORDER + SEC_ANIM_CHILDREN + SEC_ANIM + SEC_ALIGN + SEC_LAYER + SEC_CONSTRAINTS + SEC_DUPE_DEL,
+    image: SEC_IMG_PROPS + SEC_CROP + SEC_STEP_ORDER + SEC_ANIM_CHILDREN + SEC_ANIM + SEC_ALIGN + SEC_LAYER + SEC_CONSTRAINTS + SEC_DUPE_DEL,
+    video: SEC_VIDEO_PROPS + SEC_CROP + SEC_STEP_ORDER + SEC_ANIM_CHILDREN + SEC_ANIM + SEC_ALIGN + SEC_LAYER + SEC_CONSTRAINTS + SEC_DUPE_DEL,
+    multi: SEC_MULTI_HINT + SEC_STEP_ORDER + SEC_GROUP_ACTIONS + SEC_ALIGN + SEC_LAYER + SEC_DUPE_DEL,
+    group: SEC_GROUP_ACTIONS + SEC_AUTO_LAYOUT + SEC_COMPONENT + SEC_STEP_ORDER + SEC_ANIM_CHILDREN + SEC_ALIGN + SEC_LAYER + SEC_CONSTRAINTS + SEC_DUPE_DEL
   };
-
-  /* detectContext(el, selBlocks, selBlock)
-     editor.js _setSel 이 인자로 넘겨주는 값을 Right선 사용.
-     editor.js 의 sel/selBlock/selBlocks 는 IIFE 내부라 window 에 안 보임. */
   function detectContext(el, selBlocks, selBlock){
     try{
       const blocks = selBlocks || window._edSelBlocks || window.selBlocks || null;
       if(blocks && blocks.length > 1) return 'multi';
       const s = el || selBlock || window.sel || window.selBlock || null;
       if(!s) return 'none';
+      /* v2.1: ed-group이면 group 컨텍스트 (Auto Layout / Component 노출) */
+      if(s.classList && s.classList.contains('ed-group')) return 'group';
       if(s.classList && s.classList.contains('ed-media-wrap')){
         if(s.querySelector('img'))    return 'image';
         if(s.querySelector('video'))  return 'video';
@@ -266,6 +362,21 @@
     cb.checked = target.getAttribute('data-anim-children') === 'seq';
     if(info) info.textContent = '' + target.children.length + ' children will appear sequentially.';
   }
+  function updateStepOrderUI(el, selBlocks){
+    const input=document.getElementById('pcStepOrder');
+    if(!input)return;
+    const blocks=(selBlocks&&selBlocks.length)?selBlocks:null;
+    if(blocks){
+      const vals=blocks.map(b=>b.getAttribute&&b.getAttribute('data-sort')||'');
+      const first=vals[0]||'';
+      input.value=vals.every(v=>v===first)?first:'';
+      input.placeholder=vals.every(v=>v===first)?'Auto':'Mixed';
+      return;
+    }
+    const target=el||window.sel||window.selBlock||null;
+    input.value=target&&target.getAttribute?target.getAttribute('data-sort')||'':'';
+    input.placeholder='Auto';
+  }
   function _paintGradient(bar){
     if(!bar)return;
     bar.style.height='14px';
@@ -280,18 +391,90 @@
     btn.classList.add('active');
   }
 
+  /* v2.1 — Auto Layout UI 동기화: 현재 ed-group의 attribute를 패널 입력에 반영 */
+  function _refreshLayoutUI(){
+    if(!window.EA||!EA._readGroupAttrs)return;
+    const a=EA._readGroupAttrs();
+    if(!a)return;
+    /* Direction 토글 active */
+    ['pcLayH','pcLayV','pcLayOff'].forEach(id=>{const b=document.getElementById(id);if(b)b.classList.remove('active');});
+    if(a.layout==='h')      { const x=document.getElementById('pcLayH'); if(x)x.classList.add('active'); }
+    else if(a.layout==='v') { const x=document.getElementById('pcLayV'); if(x)x.classList.add('active'); }
+    else                    { const x=document.getElementById('pcLayOff'); if(x)x.classList.add('active'); }
+    /* Gap */
+    const gap=document.getElementById('pcGap');
+    if(gap)gap.value=a.gap||'';
+    /* Padding (개별값 우선, 없으면 단축값) */
+    const fall=a.pad||'';
+    [['pcPadT',a.padT||fall],['pcPadR',a.padR||fall],['pcPadB',a.padB||fall],['pcPadL',a.padL||fall]].forEach(function(p){
+      var id=p[0],v=p[1];
+      const e=document.getElementById(id);if(e)e.value=v;
+    });
+    /* Constraints */
+    const ch=document.getElementById('pcConstrainH'); if(ch)ch.value=a.constrainH||'left';
+    const cv=document.getElementById('pcConstrainV'); if(cv)cv.value=a.constrainV||'top';
+  }
+
+  /* v2.1 — Padding grid의 4개 input → setPadding 호출 */
+  function _applyPad(){
+    if(!window.EA||!EA.setPadding)return;
+    const t=document.getElementById('pcPadT')&&document.getElementById('pcPadT').value;
+    const r=document.getElementById('pcPadR')&&document.getElementById('pcPadR').value;
+    const b=document.getElementById('pcPadB')&&document.getElementById('pcPadB').value;
+    const l=document.getElementById('pcPadL')&&document.getElementById('pcPadL').value;
+    EA.setPadding(t,r,b,l);
+  }
+
+  /* ✂ Crop grid → EA.setCrop 호출 */
+  function _applyCrop(){
+    if(!window.EA||!EA.setCrop){console.warn('[crop] EA.setCrop not ready');return;}
+    var get=function(id){var e=document.getElementById(id);return e?(parseInt(e.value,10)||0):0};
+    var t=get('pcCropT'),r=get('pcCropR'),b=get('pcCropB'),l=get('pcCropL');
+    EA.setCrop('t',t);
+    EA.setCrop('r',r);
+    EA.setCrop('b',b);
+    EA.setCrop('l',l);
+  }
+  function _applyCropScale(v){
+    if(!window.EA||!EA.setCropScale){console.warn('[crop] EA.setCropScale not ready');return;}
+    var scale=parseFloat(v)||1;
+    var n=document.getElementById('pcCropScale');
+    var r=document.getElementById('pcCropScaleRange');
+    if(n&&document.activeElement!==n)n.value=String(Math.round(scale*100)/100);
+    if(r&&document.activeElement!==r)r.value=String(Math.min(4,Math.max(0.1,scale)));
+    EA.setCropScale(scale);
+  }
+
+  /* 미디어 선택됐을 때 패널 입력값 동기화 */
+  function _refreshCropUI(){
+    if(!window.EA||!EA.readCrop)return;
+    var c=EA.readCrop();if(!c)return;
+    [['pcCropT',c.t],['pcCropR',c.r],['pcCropB',c.b],['pcCropL',c.l]].forEach(function(p){
+      var e=document.getElementById(p[0]);if(e)e.value=(p[1]||'');
+    });
+    var scale=c.scale||1;
+    var n=document.getElementById('pcCropScale');if(n)n.value=String(Math.round(scale*100)/100);
+    var r=document.getElementById('pcCropScaleRange');if(r)r.value=String(Math.min(4,Math.max(0.1,scale)));
+  }
+
   function render(ctx, selBlocks, el){
     const p = getPanel();
     if(!p) return;
     if(ctx === lastCtx){
       if(ctx === 'multi') updateMultiCount(selBlocks);
-      if(ctx === 'text' || ctx === 'image' || ctx === 'video') updateAnimChildrenUI(el);
+      if(ctx === 'multi' || ctx === 'text' || ctx === 'image' || ctx === 'video' || ctx === 'group') updateStepOrderUI(el, selBlocks);
+      if(ctx === 'text' || ctx === 'image' || ctx === 'video' || ctx === 'group') updateAnimChildrenUI(el);
+      if(ctx === 'group') _refreshLayoutUI();
+      if(ctx === 'image' || ctx === 'video') _refreshCropUI();
       return;
     }
     p.innerHTML = CONTEXTS[ctx] || CONTEXTS.none;
     lastCtx = ctx;
     if(ctx === 'multi') updateMultiCount(selBlocks);
-    if(ctx === 'text' || ctx === 'image' || ctx === 'video') updateAnimChildrenUI(el);
+    if(ctx === 'multi' || ctx === 'text' || ctx === 'image' || ctx === 'video' || ctx === 'group') updateStepOrderUI(el, selBlocks);
+    if(ctx === 'text' || ctx === 'image' || ctx === 'video' || ctx === 'group') updateAnimChildrenUI(el);
+    if(ctx === 'group') _refreshLayoutUI();
+    if(ctx === 'image' || ctx === 'video') _refreshCropUI();
     if(ctx === 'text'){
       _paintGradient(document.getElementById('pcGradientBar'));
       if(window._renderSw) window._renderSw();
@@ -331,7 +514,12 @@
     init: init,
     detectContext: detectContext,
     _setPalTab: _setPalTab,
-    _version: '1.2'
+    _refreshLayoutUI: _refreshLayoutUI,
+    _applyPad: _applyPad,
+    _applyCrop: _applyCrop,
+    _applyCropScale: _applyCropScale,
+    _refreshCropUI: _refreshCropUI,
+    _version: '2.1'
   };
 
   if(document.readyState === 'loading'){

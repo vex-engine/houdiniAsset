@@ -17,7 +17,7 @@ echo "=========================================="
 # --- 1. JS 파일 UTF-8 + 문법 ---
 echo ""
 echo "▶ 1/3  JS 파일 UTF-8 + 문법 검사"
-for f in engine/editor/editor.core.js engine/editor/editor.block.js engine/editor/editor.io.js engine/editor/editor.main.js engine/panel-context.js engine/presentation.js; do
+for f in engine/editor/editor.core.js engine/editor/editor.block.js engine/editor/editor.io.js engine/editor/editor.main.js engine/panel-context.js engine/presentation.js save-server.js scripts/migrate_editable_engine_refs.js; do
   if [ ! -f "$f" ]; then
     echo -e "  ${RED}❌${NC} $f — 파일 없음"
     fail=1; continue
@@ -72,7 +72,27 @@ while IFS= read -r f; do
     echo "      마지막: ...$(echo "$tail_chunk" | tail -c 60)"
     fail=1; continue
   fi
-  has_inline_engine=$(grep -c 'PRESENTATION ENGINE\|window.EA\s*=' "$f" 2>/dev/null || echo 0)
+  if ! grep -q 'slide-deck' "$f"; then
+    echo -e "${GRN}✅${NC}  $f"
+    continue
+  fi
+  if ! grep -q 'id="edToolbar"\|id="edNavList"\|class="ed-nav"\|fb-save' "$f"; then
+    echo -e "${GRN}✅${NC}  $f"
+    continue
+  fi
+  is_export=0
+  if grep -Eq "<meta[^>]+name=['\"]engine-mode['\"][^>]+content=['\"]presentation['\"]|<meta[^>]+content=['\"]presentation['\"][^>]+name=['\"]engine-mode['\"]" "$f" 2>/dev/null; then
+    is_export=1
+  fi
+  has_inline_engine=$(grep -c 'PRESENTATION ENGINE\|editor.core.js —\|editor.block.js —\|editor.io.js —\|editor.main.js —\|window.EA\s*=' "$f" 2>/dev/null || true)
+  has_inline_engine=${has_inline_engine:-0}
+  has_inline_engine_css=$(grep -c 'body.editor-mode .ed-nav\|body.editor-mode .ed-panel\|body.editor-mode .slide-frame' "$f" 2>/dev/null || true)
+  has_inline_engine_css=${has_inline_engine_css:-0}
+  if [ "$is_export" = "0" ] && { [ "$has_inline_engine" != "0" ] || [ "$has_inline_engine_css" != "0" ]; }; then
+    echo -e "${RED}❌ 인라인 엔진${NC}  $f"
+    echo "      편집용 HTML은 engine/* 외부 참조만 허용. 복구: node scripts/migrate_editable_engine_refs.js \"$f\""
+    fail=1; continue
+  fi
   if [ "$has_inline_engine" = "0" ]; then
     missing=""
     for js in presentation.js panel-context.js editor.core.js editor.block.js editor.io.js editor.main.js; do

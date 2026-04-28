@@ -33,43 +33,68 @@ const S={cur:0,step:0,busy:false,info:[]};
 const DECK=document.querySelector('.slide-deck');
 const CW=1920,CH=1080;/* canvas size — must match CSS --canvas-w/h and editor CFG */
 /* ============================================================
-   AUTO-STEP — 슬라이드 단위 DFS 단일 패스 (인터리브 방지)
-   data-anim-children="seq" 컨테이너의 직계 자식들에게 자동 step 부여.
-   수동 data-step 값은 하한선 앵커. data-step-auto="1" 마커로 추적.
+   AUTO-STEP — 슬라이드 단위 시각 순서 DFS 단일 패스 (인터리브 방지)
+   기존 data-step 생성 순서가 아니라 실제 화면 위치(top → left)를 기준으로
+   다시 번호를 매긴다. data-step-lock="1"만 명시적 고정값으로 인정한다.
    ============================================================ */
+const STEP_ARTIFACT_SEL='.ed-drag-handle,.ed-block-resize,.ed-block-resize-w,.ed-block-resize-e,.ed-media-del,.ed-resize-handle,.ed-crop-handle,.ed-crosshair-h,.ed-crosshair-v,.ed-grid,.ed-snap-h,.ed-snap-v,.ed-guide-169';
+const STEP_DIRECT_BLOCK_SEL='h1,h2,h3,h4,h5,h6,p,ul,ol,table,blockquote,pre,.ed-media-wrap,.card,.principle-card,.joka-cell,.joka-flow,.num-item,.flow-step,.usecase-box,.demo-desc,.demo-url,.demo-qr-col,.qna-big,.qna-thanks';
+const STEP_ORDER_TOL=20;
+function visualChildren(parent,slide){
+  const s=slide||parent.closest&&parent.closest('.slide')||parent;
+  const sr=s.getBoundingClientRect();
+  return Array.from(parent.children)
+    .filter(child=>!(child.matches&&child.matches(STEP_ARTIFACT_SEL)))
+    .map((el,i)=>{
+      const r=el.getBoundingClientRect();
+      return {el,i,top:r.top-sr.top,left:r.left-sr.left};
+    })
+    .sort((a,b)=>{
+      const dy=a.top-b.top;
+      if(Math.abs(dy)>STEP_ORDER_TOL)return dy;
+      const dx=a.left-b.left;
+      if(Math.abs(dx)>STEP_ORDER_TOL)return dx;
+      return a.i-b.i;
+    })
+    .map(item=>item.el);
+}
 function applyAutoSteps(slide){
-  slide.querySelectorAll('[data-step-auto="1"]').forEach(e=>{
-    e.removeAttribute('data-step');
-    e.removeAttribute('data-step-auto');
-  });
-  const ctx={n:0};
   function isStepTarget(el, parentIsSeq){
     if(parentIsSeq) return true;
-    return el.hasAttribute('data-step') || el.hasAttribute('data-anim-children');
+    if(el.hasAttribute('data-step') || el.hasAttribute('data-sort') || el.hasAttribute('data-anim-children')) return true;
+    return el.parentElement===slide && el.matches&&el.matches(STEP_DIRECT_BLOCK_SEL);
   }
+  const records=[];
   function walk(el, parentIsSeq){
-    Array.from(el.children).forEach(child=>{
+    visualChildren(el,slide).forEach(child=>{
       const isTarget=isStepTarget(child, parentIsSeq);
       const isSeqContainer=child.getAttribute('data-anim-children')==='seq';
       if(isTarget){
-        const hasManual=child.hasAttribute('data-step') && child.getAttribute('data-step-auto')!=='1';
-        if(hasManual){
-          const manual=+child.dataset.step;
-          ctx.n=Math.max(ctx.n+1, isNaN(manual)?ctx.n+1:manual);
-          if(+child.dataset.step!==ctx.n){
-            child.setAttribute('data-step',String(ctx.n));
-            child.setAttribute('data-step-auto','1');
-          }
-        }else{
-          ctx.n++;
-          child.setAttribute('data-step',String(ctx.n));
-          child.setAttribute('data-step-auto','1');
-        }
+        records.push({el:child,parentIsSeq});
       }
       walk(child, isSeqContainer);
     });
   }
   walk(slide, false);
+  let maxStep=0;
+  records.forEach(r=>{
+    const child=r.el;
+    const sort=Number(child.getAttribute('data-sort'));
+    if(Number.isFinite(sort)&&sort>0){
+      child.setAttribute('data-step',String(sort));
+      child.removeAttribute('data-step-auto');
+      maxStep=Math.max(maxStep,sort);
+      return;
+    }
+    const step=Number(child.getAttribute('data-step'));
+    if(Number.isFinite(step)&&step>0){
+      maxStep=Math.max(maxStep,step);
+      return;
+    }
+    maxStep++;
+    child.setAttribute('data-step',String(maxStep));
+    child.setAttribute('data-step-auto','1');
+  });
 }
 function init(){
   slides=Array.from(document.querySelectorAll('.slide'));
@@ -91,23 +116,42 @@ window.addEventListener('resize',updateScale);
 function render(){slides.forEach((s,i)=>{s.classList.toggle('active',i===S.cur);s.classList.remove('exit-left','exit-right');s.setAttribute('aria-hidden',i!==S.cur)});reveal();ctrl()}
 function reveal(){const s=slides[S.cur];if(!s)return;s.querySelectorAll('[data-step]').forEach(e=>e.classList.toggle('visible',+e.dataset.step<=S.step))}
 function ctrl(){PF.style.width=(totalSlides>1?(S.cur/(totalSlides-1))*100:100)+'%';CN.textContent=S.cur+1;TN.textContent=totalSlides}
+function prepSlideStep(slide,step){
+  if(!slide)return;
+  slide.classList.add('step-prep');
+  slide.querySelectorAll('[data-step]').forEach(e=>e.classList.toggle('visible',+e.dataset.step<=step));
+  void slide.offsetHeight;
+}
+function finishSlidePrep(slide){
+  if(!slide)return;
+  requestAnimationFrame(()=>requestAnimationFrame(()=>slide.classList.remove('step-prep')));
+}
 function go(i,dir){
   i=Math.max(0,Math.min(i,totalSlides-1));
   if(i===S.cur||S.busy)return;
   S.busy=true;
   const c=slides[S.cur],n=slides[i];
-  /* Flash 방지: step 먼저 세팅 → reflow → active 전환 */
   S.cur=i;S.step=S.info[i].max;
-  n.querySelectorAll('[data-step]').forEach(e=>e.classList.toggle('visible',+e.dataset.step<=S.step));
-  void n.offsetHeight;
+  prepSlideStep(n,S.step);
   c.classList.remove('active');
   c.classList.add(dir==='next'?'exit-left':'exit-right');
+  c.setAttribute('aria-hidden','true');
   n.classList.add('active');
   n.setAttribute('aria-hidden','false');
+  finishSlidePrep(n);
   ctrl();
   setTimeout(()=>{c.classList.remove('exit-left','exit-right');S.busy=false},CFG.TRANSITION_MS);
 }
-function jump(i){i=Math.max(0,Math.min(i,totalSlides-1));if(i===S.cur)return;slides[S.cur].classList.remove('active');slides[S.cur].setAttribute('aria-hidden','true');S.cur=i;S.step=S.info[i].max;slides[i].classList.add('active');slides[i].setAttribute('aria-hidden','false');reveal();ctrl()}
+function jump(i){
+  i=Math.max(0,Math.min(i,totalSlides-1));if(i===S.cur)return;
+  const c=slides[S.cur],n=slides[i];
+  S.cur=i;S.step=S.info[i].max;
+  prepSlideStep(n,S.step);
+  c.classList.remove('active');c.setAttribute('aria-hidden','true');
+  n.classList.add('active');n.setAttribute('aria-hidden','false');
+  finishSlidePrep(n);
+  ctrl();
+}
 function isEd(){return document.body.classList.contains('editor-mode')}
 
 /* 공통: 스텝 단위 전진/후진 (휠·스페이스·화살표 통합 로직).
@@ -168,14 +212,13 @@ function goStep(i,dir,entryStep){
      전부 보일 수 있음. visible 클래스 정리 + reflow 강제 후에 active 붙여야 flash 없음. */
   S.cur=i;
   S.step=(i===0)?S.info[i].max:entryStep;
-  /* 새 슬라이드의 모든 data-step 요소를 현재 step 값에 맞게 먼저 설정 */
-  n.querySelectorAll('[data-step]').forEach(e=>e.classList.toggle('visible',+e.dataset.step<=S.step));
-  /* 강제 reflow — CSS opacity:0 상태가 페인트되도록 */
-  void n.offsetHeight;
+  prepSlideStep(n,S.step);
   c.classList.remove('active');
   c.classList.add(dir==='next'?'exit-left':'exit-right');
+  c.setAttribute('aria-hidden','true');
   n.classList.add('active');
   n.setAttribute('aria-hidden','false');
+  finishSlidePrep(n);
   ctrl();
   setTimeout(()=>{c.classList.remove('exit-left','exit-right');S.busy=false},CFG.TRANSITION_MS);
 }

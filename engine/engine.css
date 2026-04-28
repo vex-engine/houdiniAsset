@@ -14,6 +14,7 @@ html,body{width:100%;height:100%;overflow:hidden;font-family:'Noto Sans KR','Int
 [data-animate="fade-right"]{transform:translateX(25px)}
 [data-animate="zoom-in"]{transform:scale(.9)}
 [data-step].visible{opacity:1;transform:translate(0,0) scale(1);pointer-events:auto;transition-delay:calc(var(--stagger,0)*70ms)}
+.slide.step-prep [data-step]{transition:none!important;transition-delay:0s!important}
 :root{
   /* 슬라이드 콘텐츠용 (검정 배경 유지) */
   --g:#3ECF8E;--gl:#5EEAA0;--gd:#2a8f60;
@@ -134,6 +135,7 @@ body.editor-mode .ed-file-bar{display:flex}
 .ed-nav-item.active .ed-nav-num{color:var(--g)}
 .ed-nav-title{font-size:12px;color:var(--ui-text);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .ed-nav-item.active .ed-nav-title{color:var(--ui-text)}
+.ed-nav-title.editing{overflow:visible;text-overflow:clip;white-space:normal;background:rgba(62,207,142,.14);border:1px solid var(--g);border-radius:4px;padding:2px 4px;outline:none;cursor:text}
 .ed-nav-actions{display:none;gap:2px;position:absolute;right:8px}
 .ed-nav-item:hover .ed-nav-actions{display:flex}
 .ed-nav-btn{background:none;border:none;color:var(--ui-text-2);font-size:14px;cursor:pointer;padding:2px 5px;border-radius:3px;line-height:1}
@@ -189,6 +191,18 @@ body.ed-resizing *{cursor:ew-resize!important;user-select:none!important}
 .pc-size-input:focus,.pc-size-select:focus{border-color:var(--ui-accent);outline:none}
 .pc-spacing-input{width:56px;background:var(--ui-bg-2);border:1px solid var(--ui-bdr);color:var(--ui-text);font-size:12px;padding:6px 8px;border-radius:5px;font-family:'JetBrains Mono',monospace;text-align:center}
 .pc-spacing-input:focus{border-color:var(--ui-accent);outline:none}
+.pc-num-input{background:var(--ui-bg-2);border:1px solid var(--ui-bdr);color:var(--ui-text);font-size:12px;padding:6px 8px;border-radius:5px;font-family:'JetBrains Mono',monospace;text-align:right;min-width:0}
+.pc-num-input:focus{border-color:var(--ui-accent);outline:none}
+.pc-help{font-size:11px;color:var(--ui-text-2);line-height:1.45;margin-bottom:10px}
+.pc-crop-grid{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-bottom:10px}
+.pc-crop-grid label{display:flex;align-items:center;justify-content:space-between;gap:7px;color:var(--ui-text-2);font-size:11px}
+.pc-crop-grid .pc-num-input{width:64px}
+.pc-crop-scale{border-top:1px solid var(--ui-bdr);padding-top:10px;margin-top:2px}
+.pc-crop-scale-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px;color:var(--ui-text-2);font-size:11px}
+.pc-crop-scale-head .pc-num-input{width:72px}
+.pc-crop-scale input[type="range"]{width:100%;accent-color:var(--g);cursor:pointer}
+.pc-crop-actions{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:10px}
+.pc-crop-actions .ed-btn{text-align:center;margin-bottom:0;padding:7px 8px}
 #pcSwatches{display:flex;flex-wrap:wrap;gap:7px}
 #pcSwatches .color-swatch{width:28px;height:28px;border-radius:50%;border:2px solid rgba(255,255,255,.12);cursor:pointer;padding:0;transition:border-color .15s,transform .15s}
 #pcSwatches .color-swatch:hover{border-color:var(--ui-text);transform:scale(1.15)}
@@ -255,7 +269,7 @@ body.ed-resizing *{cursor:ew-resize!important;user-select:none!important}
    자동 hover outline 제거 — 여러 블럭이 동시에 녹색으로 보이던 버그 방지 */
 body.editor-mode .slide.active [contenteditable="true"]{cursor:text;border-radius:3px;min-height:1em;position:relative;outline:none}
 body.editor-mode .slide.active [contenteditable="true"]:focus{outline:none}
-/* 드래그 핸들 (⠿) — 블럭 시스템 v2에선 Space/Alt+드래그 방식 사용, 핸들 완전 제거 */
+/* 드래그 핸들 (⠿) — 블럭 시스템 v2에선 본체 드래그 이동을 사용, 핸들 완전 제거 */
 .ed-drag-handle{display:none !important}
 body.editor-mode .slide.active .ed-drag-handle{display:none !important}
 .ed-dragging{outline:2px solid var(--g)!important;outline-offset:2px!important;opacity:.7}
@@ -263,6 +277,7 @@ body.editor-mode .slide.active .ed-drag-handle{display:none !important}
 body.editor-mode .ed-selected{outline:2px solid var(--g)!important;outline-offset:3px!important;background:rgba(62,207,142,.04)}
 /* 블럭 시스템 v2 — SELECTED (진한 녹색, 이동/삭제 대상) */
 body.editor-mode .ed-selected-block{outline:2.5px solid var(--g)!important;outline-offset:3px!important;background:var(--ui-accent-bg)!important;box-shadow:0 0 0 1px rgba(62,207,142,.3) inset}
+body.editor-mode .slide.active .ed-selected-block:not([contenteditable="true"]){cursor:move}
 /* 블럭 시스템 v2 — EDITING (연한 녹색 점선, 글자 편집 중) */
 body.editor-mode .ed-editing-block{outline:1.5px dashed rgba(62,207,142,.55)!important;outline-offset:2px!important;background:rgba(62,207,142,.02)!important;box-shadow:none}
 /* 블럭 시스템 v2 — 이동 모드 (Space 홀드 중) */
@@ -276,8 +291,42 @@ body.editor-mode .ed-media-wrap{outline:1px dashed rgba(62,207,142,.15);outline-
 body.editor-mode .ed-media-wrap:hover{outline-color:var(--g)}
 .ed-media-del{position:absolute;top:-10px;right:-10px;width:22px;height:22px;background:#ff5f57;color:#fff;border:none;border-radius:50%;font-size:13px;cursor:pointer;display:none;align-items:center;justify-content:center;line-height:1;z-index:10;pointer-events:auto}
 body.editor-mode .ed-media-wrap:hover .ed-media-del{display:flex}
-.ed-resize-handle{position:absolute;bottom:-6px;right:-6px;width:16px;height:16px;background:var(--g);border:2px solid #1a1a1a;border-radius:50%;cursor:nwse-resize;display:none;z-index:10;pointer-events:auto}
+.ed-resize-handle{position:absolute;bottom:-8px;right:-8px;width:18px;height:18px;background:var(--g);border:2px solid #1a1a1a;border-radius:50%;cursor:nwse-resize;display:none;z-index:220;pointer-events:auto}
+.ed-resize-handle::before{content:'';position:absolute;inset:-10px;cursor:nwse-resize}
 body.editor-mode .ed-media-wrap:hover .ed-resize-handle{display:block}
+body.ed-media-scaling,body.ed-media-scaling *{cursor:nwse-resize!important;user-select:none!important}
+body.ed-media-scaling .ed-media-wrap video,
+body.ed-media-scaling .ed-media-wrap iframe{pointer-events:none!important}
+/* ============================================================
+   CROP — 픽셀 절대값으로 상하좌우 잘라내기 (이미지/영상 공용)
+   data attr: data-crop-t / data-crop-r / data-crop-b / data-crop-l (정수, px)
+   동작: wrap에 overflow:hidden + 내부 미디어를 음수 margin으로 끌어당겨
+         보여줄 영역만 잘라낸 듯 표시. 저장된 HTML에 그대로 박제.
+   ============================================================ */
+.ed-media-wrap.has-crop{overflow:hidden}
+.ed-media-wrap.has-scale{overflow:visible}
+.ed-media-wrap.has-crop.has-scale{overflow:hidden}
+.ed-media-wrap.has-crop > img,
+.ed-media-wrap.has-crop > video,
+.ed-media-wrap.has-crop > iframe{
+  margin-top:    calc(-1 * var(--cT, 0px));
+  margin-left:   calc(-1 * var(--cL, 0px));
+  margin-right:  calc(-1 * var(--cR, 0px));
+  margin-bottom: calc(-1 * var(--cB, 0px));
+}
+/* 4면 크롭 드래그 핸들 (선택된 미디어에만 표시) */
+.ed-crop-handle{position:absolute;display:none;background:#FFB300;border:2px solid #1a1a1a;border-radius:3px;z-index:11;pointer-events:auto;opacity:.85;transition:opacity .15s,transform .15s}
+.ed-crop-handle:hover{opacity:1;transform:scale(1.15)}
+.ed-crop-handle.t,.ed-crop-handle.b{left:50%;width:24px;height:8px;margin-left:-12px;cursor:ns-resize}
+.ed-crop-handle.l,.ed-crop-handle.r{top:50%;width:8px;height:24px;margin-top:-12px;cursor:ew-resize}
+.ed-crop-handle.t{top:-4px}
+.ed-crop-handle.b{bottom:-4px}
+.ed-crop-handle.l{left:-4px}
+.ed-crop-handle.r{right:-4px}
+body.editor-mode .ed-media-wrap.ed-selected .ed-crop-handle,
+body.editor-mode .ed-media-wrap.ed-selected-block .ed-crop-handle{display:block !important}
+body.ed-cropping{cursor:crosshair !important}
+body.ed-cropping *{cursor:crosshair !important}
 .ed-block-resize{display:none;width:14px;height:14px;background:var(--g);border:2px solid #1a1a1a;border-radius:3px;cursor:nwse-resize;pointer-events:auto;opacity:.7;transition:opacity .15s;z-index:200}
 .ed-block-resize:hover{opacity:1;transform:scale(1.2)}
 body.editor-mode .ed-block-resize{display:block}
@@ -378,4 +427,51 @@ body.editor-mode .ed-mode-badge{display:block}
 .ed-anim-apply:hover{background:var(--ui-accent-bg)}
 .ed-anim-remove{background:transparent;border:1px solid var(--ui-bdr);color:var(--ui-text-2);padding:6px 10px;border-radius:5px;font-size:11px;font-family:'JetBrains Mono',monospace;cursor:pointer;transition:background .15s;white-space:nowrap}
 .ed-anim-remove:hover{background:var(--ui-danger-bg);border-color:var(--ui-danger);color:var(--ui-danger)}
+.ed-anim-reset{background:transparent;border:1px solid var(--ui-bdr);color:var(--ui-text-2);padding:6px 8px;border-radius:5px;font-size:10px;font-family:'JetBrains Mono',monospace;cursor:pointer;transition:background .15s;white-space:nowrap}
+.ed-anim-reset:hover{background:rgba(62,207,142,.08);border-color:var(--g);color:var(--g)}
 .ed-anim-hint{font-size:10px;color:var(--ui-text-3);line-height:1.5;margin-top:4px}
+
+/* ============================================================
+   BLOCK SYSTEM v2.1 — Group / Auto-Layout / Component / Constraints
+   상태는 모두 DOM data-*. 시각 적용은 여기서만.
+   설계 문서: engine/BLOCK_SYSTEM_v2.1_GROUP_LAYOUT.md
+   ============================================================ */
+
+/* ── Group: Card vs Frame ── */
+.ed-group{position:relative}
+.ed-group[data-group-mode="frame"]{
+  background:transparent !important;
+  border:1px dashed rgba(62,207,142,.25);
+}
+body:not(.editor-mode) .ed-group[data-group-mode="frame"]{
+  border-color:transparent;
+}
+
+/* ── Auto-Layout: Direction (CSS Flex) ── */
+.ed-group[data-layout="v"]{display:flex;flex-direction:column}
+.ed-group[data-layout="h"]{display:flex;flex-direction:row}
+
+/* Gap & Padding: JS가 setProperty로 CSS variable 주입 → 여기선 var() 소비만 */
+.ed-group[data-layout]{
+  gap: var(--ed-gap, 0);
+  padding-top:    var(--ed-pad-t, 0);
+  padding-right:  var(--ed-pad-r, 0);
+  padding-bottom: var(--ed-pad-b, 0);
+  padding-left:   var(--ed-pad-l, 0);
+}
+
+/* Cross-axis align */
+.ed-group[data-layout][data-align="start"]   {align-items:flex-start}
+.ed-group[data-layout][data-align="center"]  {align-items:center}
+.ed-group[data-layout][data-align="end"]     {align-items:flex-end}
+.ed-group[data-layout][data-align="stretch"] {align-items:stretch}
+
+/* ── Component / Instance — 에디터 모드만 시각 표시 ── */
+body.editor-mode .ed-component{
+  outline:1px dashed rgba(124,176,255,.5);
+  outline-offset:4px;
+}
+body.editor-mode .ed-component::before{
+  content:'\25C7  Master';
+  position:absolute;top:-18px;left:0;
+  font:10px

@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>Block System v2.1 — Panel Mockup</title>
+<style>
+  :root{
+    --g:#3ECF8E;--gd:#2a8f60;
+    --ui-bg:#0d1417;--ui-bg-2:#162227;--ui-bdr:#2a3a40;
+    --ui-text:#e8e8e8;--ui-text-2:#bbb;--ui-text-3:#888;
+    --ui-accent-bg:rgba(62,207,142,.1);--ui-accent-bdr:rgba(62,207,142,.4);
+    --ui-danger:#ff5f57;--ui-danger-bg:rgba(255,95,87,.12);
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{
+    background:#0a0f12;color:var(--ui-text);
+    font-family:'Noto Sans KR','JetBrains Mono',monospace;
+    padding:24px;
+    min-height:100vh;
+  }
+  h1{font-size:18px;color:var(--g);font-family:'JetBrains Mono',monospace;letter-spacing:.04em;margin-bottom:6px}
+  .sub{font-size:12px;color:var(--ui-text-2);margin-bottom:24px}
+  .mockup-grid{
+    display:grid;grid-template-columns:repeat(3,minmax(280px,320px));gap:24px;
+    align-items:start;
+  }
+  .panel-mock{
+    background:var(--ui-bg);border:1px solid var(--ui-bdr);border-radius:8px;
+    overflow:hidden;
+  }
+  .panel-mock h2{
+    padding:10px 14px;background:rgba(62,207,142,.08);
+    color:var(--g);font:11px/1 'JetBrains Mono',monospace;letter-spacing:.06em;
+    border-bottom:1px solid var(--ui-bdr);
+    text-transform:uppercase;
+  }
+  .panel-mock h2 span{color:var(--ui-text-2);margin-left:6px;font-size:9px}
+  .ed-section{padding:14px 16px;border-bottom:1px solid var(--ui-bdr)}
+  .ed-section:last-child{border-bottom:none}
+  .ed-section-title{
+    font-size:10px;color:var(--ui-text-2);
+    font-family:'JetBrains Mono',monospace;letter-spacing:.08em;
+    text-transform:uppercase;margin-bottom:10px;font-weight:700;
+  }
+  .ed-btn{
+    display:block;width:100%;padding:8px 12px;
+    background:var(--ui-bg-2);border:1px solid var(--ui-bdr);border-radius:6px;
+    color:var(--ui-text);font-size:11px;font-family:inherit;
+    cursor:pointer;text-align:left;transition:background .15s;margin-bottom:5px;
+  }
+  .ed-btn:hover{background:var(--ui-accent-bg);border-color:var(--ui-accent-bdr)}
+  .ed-btn-icon{display:inline-block;width:18px;text-align:center;margin-right:5px}
+  .ed-btn.danger{color:var(--ui-danger);border-color:var(--ui-danger)}
+  .ed-align-row{display:flex;gap:4px}
+  .ed-align-row button{
+    flex:1;padding:6px;background:var(--ui-bg-2);
+    border:1px solid var(--ui-bdr);border-radius:4px;
+    color:var(--ui-text);font-size:11px;cursor:pointer;text-align:center;
+  }
+
+  /* Auto Layout 신규 컨트롤 */
+  .pc-direction-row{display:flex;gap:4px}
+  .pc-direction-row button{
+    flex:1;padding:7px 4px;background:var(--ui-bg-2);
+    border:1px solid var(--ui-bdr);border-radius:4px;
+    color:var(--ui-text);font-size:11px;
+    font-family:'JetBrains Mono',monospace;cursor:pointer;
+  }
+  .pc-direction-row button.active{
+    background:var(--ui-accent-bg);
+    border-color:var(--ui-accent-bdr);color:var(--g);
+    box-shadow:inset 0 0 0 1px rgba(62,207,142,.3);
+  }
+  .pc-num-input{
+    width:48px;padding:4px 6px;background:var(--ui-bg-2);
+    border:1px solid var(--ui-bdr);border-radius:4px;color:var(--ui-text);
+    font:11px/1.2 'JetBrains Mono',monospace;text-align:right;
+  }
+  .pc-pad-grid{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:4px}
+  .pc-pad-grid > div{display:flex;flex-direction:column;align-items:center;gap:2px}
+  .pc-pad-grid label{
+    font:9px/1 'JetBrains Mono',monospace;color:var(--ui-text-2);
+    text-align:center;letter-spacing:.06em;
+  }
+  .pc-row{display:flex;align-items:center;gap:6px}
+  .pc-label{font-size:10px;color:var(--ui-text-2);min-width:30px}
+  .pc-size-select{
+    flex:1;background:var(--ui-bg-2);border:1px solid var(--ui-bdr);
+    color:var(--ui-text);padding:5px 8px;border-radius:4px;
+    font:11px 'JetBrains Mono',monospace;
+  }
+
+  .annotation{
+    margin-top:12px;font-size:11px;color:var(--ui-text-3);line-height:1.6;
+    padding:8px 12px;background:rgba(62,207,142,.04);
+    border-left:2px solid var(--g);border-radius:2px;
+  }
+  .annotation strong{color:var(--g)}
+  .legend{
+    display:flex;gap:16px;margin-top:24px;font-size:11px;color:var(--ui-text-2);
+    padding:12px 16px;background:var(--ui-bg);border-radius:6px;
+    border:1px solid var(--ui-bdr);
+  }
+  .legend-dot{
+    display:inline-block;width:10px;height:10px;border-radius:2px;
+    margin-right:6px;vertical-align:middle;
+  }
+  .new{background:var(--g)}
+  .changed{background:#D4A843}
+  .existing{background:var(--ui-bdr)}
+
+  .footer{
+    margin-top:32px;padding:16px;background:var(--ui-bg);
+    border:1px solid var(--ui-bdr);border-radius:6px;font-size:12px;
+  }
+  .footer h3{color:var(--g);font-size:13px;margin-bottom:10px;font-family:'JetBrains Mono',monospace}
+  .footer table{width:100%;border-collapse:collapse;font-size:11px}
+  .footer th,.footer td{padding:6px 10px;text-align:left;border-bottom:1px solid var(--ui-bdr)}
+  .footer th{color:var(--ui-text-2);font-weight:600}
+  .footer code{
+    background:var(--ui-bg-2);padding:2px 6px;border-radius:3px;
+    font:11px 'JetBrains Mono',monospace;color:var(--g);
+  }
+</style>
+</head>
+<body>
+
+<h1>BLOCK SYSTEM v2.1 — Panel Mockup</h1>
+<div class="sub">새 컨텍스트별 우측 패널 시각화. 그림 2의 결함(멀티셀렉트 시 GROUP 액션 부재) 해결 + Auto Layout / Component / Constraints 추가.</div>
+
+<div class="legend">
+  <span><span class="legend-dot new"></span><strong style="color:var(--g)">신규 (v2.1)</strong></span>
+  <span><span class="legend-dot changed"></span><strong style="color:#D4A843">변경 (확장)</strong></span>
+  <span><span class="legend-dot existing"></span>기존 유지</span>
+</div>
+
+<div class="mockup-grid" style="margin-top:24px">
+
+  <!-- ═══════════════════════════════════════════════════════
+       Panel A: MULTI-SELECT (그림 2의 결함 해결)
+       ═══════════════════════════════════════════════════════ -->
+  <div class="panel-mock">
+    <h2>multi context <span>(3 selected)</span></h2>
+    <div class="ed-section">
+      <div class="ed-section-title" style="color:#3ECF8E">⊟ Multi-select</div>
+      <div style="font-size:12px;color:#bbb;line-height:1.6;padding:6px 0">3 selected</div>
+    </div>
+    <!-- 신규 GROUP 섹션 -->
+    <div class="ed-section" style="background:rgba(62,207,142,.03)">
+      <div class="ed-section-title" style="color:var(--g)">Group <span style="font-size:8px;background:var(--g);color:#000;padding:1px 5px;border-radius:2px;margin-left:4px">NEW</span></div>
+      <div style="display:flex;gap:5px">
+        <button class="ed-btn" style="flex:1;text-align:center"><span class="ed-btn-icon">⊟</span>Wrap in Card</button>
+        <button class="ed-btn" style="flex:1;text-align:center"><span class="ed-btn-icon">⊡</span>Wrap in Frame</button>
+      </div>
+      <button class="ed-btn" style="width:100%;margin-top:4px;text-align:center"><span class="ed-btn-icon">↗</span>Unwrap</button>
+    </div>
+    <div class="ed-section">
+      <div class="ed-section-title">Align</div>
+      <div class="ed-align-row"><button>← L</button><button>↔ Center</button><button>R →</button></div>
+      <div class="ed-align-row" style="margin-top:4px"><button>↑ T</button><button>↕ Mid</button><button>B ↓</button></div>
+    </div>
+    <div class="ed-section">
+      <div class="ed-section-title">Layer</div>
+      <div style="display:flex;gap:5px">
+        <button class="ed-btn" style="flex:1;text-align:center">↑ Front</button>
+        <button class="ed-btn" style="flex:1;text-align:center">↓ Back</button>
+      </div>
+    </div>
+    <div class="ed-section">
+      <div class="ed-section-title">Selection</div>
+      <div style="display:flex;gap:5px">
+        <button class="ed-btn" style="flex:1;text-align:center"><span class="ed-btn-icon">⊕</span>Duplicate</button>
+        <button class="ed-btn danger" style="flex:1;text-align:center"><span class="ed-btn-icon">🗑</span>Delete</button>
+      </div>
+    </div>
+    <div class="annotation">
+      <strong>그림 2 결함 해결:</strong> 멀티셀렉트했을 때 패널에서 바로 Wrap in Card / Wrap in Frame / Unwrap 호출 가능.
+      단축키 <code style="color:var(--g)">W</code> / <code style="color:var(--g)">Shift+W</code> 도 추가.
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════
+       Panel B: GROUP CONTEXT (ed-group 단일 선택)
+       ═══════════════════════════════════════════════════════ -->
+  <div class="panel-mock" style="border-color:rgba(62,207,142,.3)">
+    <h2>group context <span>(ed-group 선택 시 — 신규 컨텍스트)</span></h2>
+    <!-- GROUP 액션 -->
+    <div class="ed-section" style="background:rgba(62,207,142,.03)">
+      <div class="ed-section-title" style="color:var(--g)">Group</div>
+      <div style="display:flex;gap:5px">
+        <button class="ed-btn" style="flex:1;text-align:center"><span class="ed-btn-icon">⊟</span>Wrap in Card</button>
+        <button class="ed-btn" style="flex:1;text-align:center"><span class="ed-btn-icon">⊡</span>Wrap in Frame</button>
+      </div>
+      <button class="ed-btn" style="width:100%;margin-top:4px;text-align:center"><span class="ed-btn-icon">↗</span>Unwrap</button>
+    </div>
+    <!-- AUTO LAYOUT (신규) -->
+    <div class="ed-section" style="background:rgba(62,207,142,.05)">
+      <div class="ed-section-title" style="color:var(--g)">Auto Layout <span style="font-size:8px;background:var(--g);color:#000;padding:1px 5px;border-radius:2px;margin-left:4px">NEW</span></div>
+      <div class="pc-direction-row" style="margin-bottom:8px">
+        <button>→ H</button>
+        <button class="active">↓ V</button>
+        <button>Off</button>
+      </div>
+      <div class="pc-row" style="margin-bottom:8px">
+        <label class="pc-label">Gap</label>
+        <input class="pc-num-input" value="12">
+        <span style="font-size:10px;color:#888">px</span>
+      </div>
+      <div style="margin-bottom:6px;font-size:10px;color:#bbb;font-family:'JetBrains Mono',monospace">PADDING</div>
+      <div class="pc-pad-grid">
+        <div><label>T</label><input class="pc-num-input" value="16"></div>
+        <div><label>R</label><input class="pc-num-input" value="16"></div>
+        <div><label>B</label><input class="pc-num-input" value="16"></div>
+        <div><label>L</label><input class="pc-num-input" value="16"></div>
+      </div>
+      <div style="display:flex;gap:4px;margin-top:8px">
+        <button class="ed-btn" style="flex:1;font-size:10px;text-align:center">Start</button>
+        <button class="ed-btn" style="flex:1;font-size:10px;text-align:center">Center</button>
+        <button class="ed-btn" style="flex:1;font-size:10px;text-align:center">End</button>
+        <button class="ed-btn" style="flex:1;font-size:10px;text-align:center">Stretch</button>
+      </div>
+    </div>
+    <!-- COMPONENT (신규) -->
+    <div class="ed-section">
+      <div class="ed-section-title" style="color:var(--g)">Component <span style="font-size:8px;background:var(--g);color:#000;padding:1px 5px;border-radius:2px;margin-left:4px">NEW</span></div>
+      <button class="ed-btn" style="width:100%;text-align:center"><span class="ed-btn-icon">◇</span>Create Component</button>
+      <button class="ed-btn" style="width:100%;margin-top:4px;text-align:center"><span class="ed-btn-icon">◈</span>Detach Instance</button>
+    </div>
+    <!-- BLOCK REVEAL (기존) -->
+    <div class="ed-section">
+      <div class="ed-section-title">Block Reveal</div>
+      <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:#e8e8e8;cursor:pointer;padding:4px 0">
+        <input type="checkbox" checked>
+        <span>Reveal children one-by-one</span>
+      </label>
+      <div style="font-size:12px;color:#bbb;line-height:1.5;padding:4px 0 0 0">3 children will appear sequentially.</div>
+    </div>
+    <!-- CONSTRAINTS (신규, 접힘) -->
+    <div class="ed-section">
+      <div class="ed-section-title" style="color:var(--g)">▶ Constraints <span style="font-size:8px;background:var(--g);color:#000;padding:1px 5px;border-radius:2px;margin-left:4px">NEW</span></div>
+    </div>
+    <div class="ed-section">
+      <div class="ed-section-title">Selection</div>
+      <div style="display:flex;gap:5px">
+        <button class="ed-btn" style="flex:1;text-align:center"><span class="ed-btn-icon">⊕</span>Duplicate</button>
+        <button class="ed-btn danger" style="flex:1;text-align:center"><span class="ed-btn-icon">🗑</span>Delete</button>
+      </div>
+    </div>
+    <div class="annotation">
+      <strong>group context (신규):</strong> 만들어진 ed-group 카드를 클릭하면 자동으로 이 컨텍스트로 전환.
+      Direction/Gap/Padding 조정 시 즉시 CSS variable로 반영 — JS는 attribute만 박고 시각은 CSS가 처리 (관심사 분리).
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════
+       Panel C: TEXT CONTEXT (Constraints 추가됨)
+       ═══════════════════════════════════════════════════════ -->
+  <div class="panel-mock">
+    <h2>text context <span>(일반 텍스트 블럭)</span></h2>
+    <div class="ed-section">
+      <div class="ed-section-title" style="color:#3ECF8E">📝 Text Selected</div>
+      <div style="font-size:12px;color:#bbb;line-height:1.5;padding:4px 0">Double-click to edit</div>
+    </div>
+    <div class="ed-section">
+      <div class="ed-section-title">Text</div>
+      <div style="display:flex;gap:4px;margin-bottom:6px">
+        <button class="ed-btn" style="flex:0;padding:6px 10px"><b>B</b></button>
+        <button class="ed-btn" style="flex:0;padding:6px 10px"><i>I</i></button>
+        <span style="width:1px;background:var(--ui-bdr)"></span>
+        <button class="ed-btn" style="flex:0;padding:6px 10px">◧</button>
+        <button class="ed-btn" style="flex:0;padding:6px 10px">◫</button>
+        <button class="ed-btn" style="flex:0;padding:6px 10px">◨</button>
+      </div>
+      <div style="font-size:11px;color:var(--ui-text-3);font-style:italic">… (Block/Sel size, palette, color picker 등 기존 동일)</div>
+    </div>
+    <div class="ed-section">
+      <div class="ed-section-title">Block Reveal</div>
+      <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;padding:4px 0">
+        <input type="checkbox" disabled>
+        <span style="opacity:.5">Reveal children one-by-one</span>
+      </label>
+    </div>
+    <div class="ed-section">
+      <div class="ed-section-title">Animation</div>
+      <select class="pc-size-select" style="width:100%;margin-bottom:6px"><option>-- Preset --</option></select>
+    </div>
+    <!-- Align/Layer 동일 -->
+    <div class="ed-section">
+      <div class="ed-section-title">Align</div>
+      <div class="ed-align-row"><button>← L</button><button>↔ Center</button><button>R →</button></div>
+    </div>
+    <div class="ed-section">
+      <div class="ed-section-title">Layer</div>
+      <div style="display:flex;gap:5px">
+        <button class="ed-btn" style="flex:1;text-align:center">↑ Front</button>
+        <button class="ed-btn" style="flex:1;text-align:center">↓ Back</button>
+      </div>
+    </div>
+    <!-- CONSTRAINTS (신규, 접힘 가능) -->
+    <div class="ed-section" style="background:rgba(62,207,142,.03)">
+      <div class="ed-section-title" style="color:var(--g)">▶ Constraints <span style="font-size:8px;background:var(--g);color:#000;padding:1px 5px;border-radius:2px;margin-left:4px">NEW</span></div>
+    </div>
+    <div class="ed-section">
+      <div class="ed-section-title">Selection</div>
+      <div style="display:flex;gap:5px">
+        <button class="ed-btn" style="flex:1;text-align:center"><span class="ed-btn-icon">⊕</span>Duplicate</button>
+        <button class="ed-btn danger" style="flex:1;text-align:center"><span class="ed-btn-icon">🗑</span>Delete</button>
+      </div>
+    </div>
+    <div class="annotation">
+      <strong>text/image/video 컨텍스트:</strong> 기존 그대로 + Constraints 섹션만 추가 (접힘 디폴트). 다른 비율(쇼츠, 인스타) 뽑을 때를 위한 준비.
+    </div>
+  </div>
+
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════
+     하단: 단축키 / API 정리
+     ═══════════════════════════════════════════════════════════════════ -->
+
+<div class="footer">
+  <h3>v2.1 신규 단축키 (충돌 회피: G=Grid 토글 보존)</h3>
+  <table>
+    <thead><tr><th style="width:140px">키</th><th style="width:200px">동작</th><th>비고</th></tr></thead>
+    <tbody>
+      <tr><td><code>W</code></td><td>Wrap in Card</td><td>현재 선택을 카드(시각 스타일 있음)로 감싸기 + autoSeq 자동 ON</td></tr>
+      <tr><td><code>Shift+W</code></td><td>Wrap in Frame</td><td>투명 컨테이너로 감싸기 (autoSeq OFF)</td></tr>
+      <tr><td><code>Ctrl+G</code></td><td>(기존) Wrap = Card 별칭</td><td>피그마 호환 — 유지</td></tr>
+      <tr><td><code>Ctrl+Shift+G</code></td><td>(기존) Unwrap</td><td>유지</td></tr>
+      <tr><td><code>Ctrl+Alt+K</code></td><td>Create Component</td><td>P1</td></tr>
+      <tr><td><code>Ctrl+Alt+B</code></td><td>Detach Instance</td><td>P1</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<div class="footer" style="margin-top:16px">
+  <h3>핵심 설계 원칙 (하드코딩 회피)</h3>
+  <table>
+    <tbody>
+      <tr><td style="width:200px"><strong>State는 DOM에 산다</strong></td><td>모든 새 기능 상태(<code>data-group-mode</code>, <code>data-layout</code>, <code>data-gap</code> 등)는 DOM data-attribute에만 저장. JS 전역변수 미러 X. undo/redo가 deck 스냅샷이라 자동으로 따라옴.</td></tr>
+      <tr><td><strong>JS는 attribute, CSS는 시각</strong></td><td>JS는 setAttribute + setProperty(<code>--ed-gap</code> 등 CSS variable)만 박음. flex-direction, gap, padding 적용은 CSS selector가 처리. 관심사 분리.</td></tr>
+      <tr><td><strong>BLOCK API 단일 진입점</strong></td><td>모든 wrap/unwrap/setLayout/makeComponent는 <code>BLOCK</code> 객체와 EA API를 거침. 외부에서 DOM 직접 조작 금지.</td></tr>
+      <tr><td><strong>백워드 호환</strong></td><td>기존 <code>groupBlocksWrap</code> / <code>ungroupBlockUnwrap</code> 호출자 변경 없음. 내부에서 <code>wrapBlocks</code> / <code>unwrapBlock</code>으로 위임.</td></tr>
+      <tr><td><strong>애니메이션 자동 연동</strong></td><td>Card로 wrap 시 <code>data-anim-children="seq"</code> 자동 부여 → presentation.js의 stepAuto 시스템이 자식들에게 자동 step 부여. wrap한 의미가 즉시 살아남.</td></tr>
+      <tr><td><strong>삭제 가드</strong></td><td>Component 마스터 삭제 시 인스턴스 N개도 함께 삭제 confirmDlg. ed-group 삭제 시 자식 트리 전체 삭제 (정상). 핸들 자동 재동기화.</td></tr>
+    </tbody>
+  </table>
+</div>
+
+</body>
+</html>

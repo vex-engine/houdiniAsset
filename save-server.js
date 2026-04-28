@@ -33,6 +33,84 @@ const STATIC_EXT_MIME = {
   '.md':'text/markdown; charset=utf-8'
 };
 
+const EDITABLE_ENGINE_SCRIPTS = [
+  'presentation.js',
+  'panel-context.js',
+  'editor/editor.core.js',
+  'editor/editor.block.js',
+  'editor/editor.io.js',
+  'editor/editor.main.js'
+];
+
+function toPosix(p){ return String(p||'').replace(/\\/g,'/'); }
+function engineBaseForRel(rel){
+  const clean = toPosix(rel).replace(/^\/+/,'');
+  const dir = path.posix.dirname(clean);
+  const parts = dir === '.' ? [] : dir.split('/').filter(Boolean);
+  if(parts[0] === 'engine') return '../'.repeat(Math.max(0, parts.length - 1));
+  return '../'.repeat(parts.length) + 'engine/';
+}
+function hasEngineModePresentation(html){
+  return /<meta[^>]+name=(["'])engine-mode\1[^>]+content=(["'])presentation\2/i.test(html) ||
+    /<meta[^>]+content=(["'])presentation\1[^>]+name=(["'])engine-mode\2/i.test(html);
+}
+function isEditableDeckHtml(html){
+  return /slide-deck/i.test(html) &&
+    /(id=(["'])edToolbar\2|id=(["'])edNavList\3|class=(["'])ed-nav\4|fb-save)/i.test(html);
+}
+function isInlineEngineScript(attrs, body){
+  const srcMatch = String(attrs||'').match(/\bsrc\s*=\s*(["'])(.*?)\1/i);
+  const src = srcMatch ? toPosix(srcMatch[2].toLowerCase()) : '';
+  if(src){
+    return src.endsWith('/presentation.js') ||
+      src.endsWith('presentation.js') ||
+      src.endsWith('/panel-context.js') ||
+      src.endsWith('panel-context.js') ||
+      src.endsWith('/editor.js') ||
+      src.endsWith('editor.js') ||
+      src.includes('/editor/editor.');
+  }
+  const txt = String(body||'');
+  return txt.includes('PRESENTATION ENGINE') ||
+    txt.includes('window.EA=') ||
+    txt.includes('function _buildSaveHTML') ||
+    txt.includes('async function save(') ||
+    txt.includes('panel-context.js') ||
+    txt.includes('editor.core.js') ||
+    txt.includes('editor.block.js') ||
+    txt.includes('editor.io.js') ||
+    txt.includes('editor.main.js');
+}
+function isInlineEngineStyle(body){
+  const txt = String(body||'');
+  return txt.includes('SLIDE ENGINE') ||
+    (txt.includes('.slide-frame') && txt.includes('.ed-nav') && txt.includes('body.editor-mode'));
+}
+function normalizeEditableEngineRefs(html, rel, opts){
+  if(!isEditableDeckHtml(html) || hasEngineModePresentation(html)) return html;
+  const base = opts&&opts.base ? opts.base : engineBaseForRel(rel);
+  let out = html;
+  out = out.replace(/<meta\s+name=(["'])engine-mode\1[^>]*>\s*/gi, '');
+  out = out.replace(/<script\b([^>]*)>([\s\S]*?)<\/script>/gi, (full, attrs, body) =>
+    isInlineEngineScript(attrs, body) ? '' : full
+  );
+  out = out.replace(/<style\b([^>]*)>([\s\S]*?)<\/style>/gi, (full, attrs, body) =>
+    isInlineEngineStyle(body) ? '' : full
+  );
+  out = out.replace(/<link\b[^>]+rel=(["'])stylesheet\1[^>]+href=(["'])[^"']*(?:engine\/engine\.css|\/engine\.css|engine\.css)\2[^>]*>\s*/gi, '');
+
+  const cssTag = `<link rel="stylesheet" href="${base}engine.css">\n`;
+  const styleIdx = out.search(/<style\b/i);
+  if(styleIdx >= 0) out = out.slice(0, styleIdx) + cssTag + out.slice(styleIdx);
+  else out = out.replace(/<\/head>/i, cssTag + '</head>');
+
+  const scriptTags = EDITABLE_ENGINE_SCRIPTS
+    .map(src => `<script src="${base + src}"></script>`)
+    .join('\n') + '\n';
+  out = out.replace(/<\/body>/i, scriptTags + '</body>');
+  return out;
+}
+
 http.createServer((req, res) => {
   try{
     const decoded = decodeURIComponent(req.url.split('?')[0]);
@@ -45,7 +123,14 @@ http.createServer((req, res) => {
       const ext = path.extname(full).toLowerCase();
       const mime = STATIC_EXT_MIME[ext] || 'application/octet-stream';
       res.writeHead(200, {'Content-Type':mime, 'Cache-Control':'no-cache', 'Access-Control-Allow-Origin':'*'});
-      fs.createReadStream(full).pipe(res);
+      if(ext === '.html'){
+        fs.readFile(full, 'utf8', (readErr, html)=>{
+          if(readErr){ res.end('read error: '+readErr.message); return; }
+          res.end(normalizeEditableEngineRefs(html, rel));
+        });
+      }else{
+        fs.createReadStream(full).pipe(res);
+      }
     });
   }catch(e){ res.writeHead(500); res.end(e.message); }
 }).listen(STATIC_PORT, ()=>console.log(`[static]  http://localhost:${STATIC_PORT}  (root: ${PPTX_ROOT})`));
@@ -118,17 +203,29 @@ const apiServer = http.createServer(async (req, res) => {
     try{
       const body = await readJSON(req);
       const filePath = body.filePath;
-      const html     = body.html;
+      let html       = body.html;
       if(!filePath || html==null) throw new Error('filePath/html required');
       /* filePath는 PPTX_ROOT 기준 상대경로만 허용 (보안) */
       if(path.isAbsolute(filePath) || filePath.includes('..')) throw new Error('relative path required');
       const full = path.resolve(PPTX_ROOT, filePath);
       if(!full.startsWith(PPTX_ROOT)) throw new Error('path escapes root');
+      html = normalizeEditableEngineRefs(html, filePath);
       fs.mkdirSync(path.dirname(full), { recursive:true });
+      const assets = Array.isArray(body.assets) ? body.assets : [];
+      const copied = [];
+      for(const a of assets){
+        if(!a || !a.name || !a.data) continue;
+        const name = safeName(a.name);
+        const dst = path.resolve(path.dirname(full), name);
+        if(!dst.startsWith(path.dirname(full))) throw new Error('asset path escapes deck folder: '+name);
+        const buf = decodeAsset(a.data);
+        fs.writeFileSync(dst, buf);
+        copied.push({ name, bytes:buf.length });
+      }
       fs.writeFileSync(full, html, 'utf8');
       const kb = Math.round(Buffer.byteLength(html,'utf8')/1024);
-      console.log(`[save] ${filePath} (${kb}KB)`);
-      return jsonRes(res, 200, { ok:true, kb, path:full });
+      console.log(`[save] ${filePath} (${kb}KB, assets ${copied.length})`);
+      return jsonRes(res, 200, { ok:true, kb, path:full, assets:copied });
     }catch(e){ console.error('[save] error', e); return jsonRes(res, 400, { ok:false, error:e.message }); }
   }
 
@@ -138,8 +235,9 @@ const apiServer = http.createServer(async (req, res) => {
       const body = await readJSON(req);
       const dir  = normalizeDir(body.dir);
       const name = safeName(body.name || 'presentation.html');
-      const html = body.html;
+      let html   = body.html;
       if(html==null) throw new Error('html required');
+      html = normalizeEditableEngineRefs(html, name, {base:`http://localhost:${STATIC_PORT}/engine/`});
       fs.mkdirSync(dir, { recursive:true });
       const full = path.join(dir, name);
       fs.writeFileSync(full, html, 'utf8');
