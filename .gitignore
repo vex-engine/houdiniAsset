@@ -6,8 +6,14 @@
 *.bak
 *.before_*.bak
 *.before_split.bak
+*.tmp
+*.CORRUPTED_*
+*.DAMAGED_*
+*CORRUPTED*
+*DAMAGED*
 
 # 마일스톤 백업 폴더 (Git 히스토리가 대체)
+backup/
 engine/_milestones/
 engine/_editor_rolledback_*/
 
