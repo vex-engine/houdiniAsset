@@ -4,6 +4,62 @@ PPTX 엔진 버전 기록. 최신 버전이 위.
 
 ---
 
+## v1.3.2 — 2026-04-28 (블럭 드래그/Alt 복제 안정화)
+
+> **Tag**: `block-drag-alt-duplicate-2026-04-28`
+>
+> 텍스트 블럭 드래그와 Alt 복제 시 기존 레이아웃 텍스트가 흐트러지거나 복제본/이전 선택 블럭이 함께 움직이는 문제를 공통 블럭 로직으로 정리.
+
+### 블럭 이동/복제 규칙 정리
+- 일반 드래그: 원본 텍스트 블럭은 `relative + left/top`으로 이동한다.
+- Alt + 드래그: 원본은 건드리지 않고 복제본만 `absolute` 좌표로 생성해 이동한다.
+- Ctrl+D: Alt 복제와 같은 `cloneBlockForDuplicate()` / `placeDuplicateBlockAtSource()` 경로를 사용한다.
+- 복제 시 선택/편집/드래그/리사이즈/component/instance/runtime 상태와 editor artifact를 제거한다.
+- resize/drag 핸들은 선택된 블럭에만 붙도록 정리했다.
+
+### 하드코딩 정리
+- 블럭 핸들 대상 선택자를 `BLOCK.TARGET_SEL`로 이동.
+- 재발 방지 문서 추가: `docs/블럭_드래그_복제_회귀방지.md`
+
+### 검증
+- `node --check engine/editor/editor.block.js`
+- `node --check engine/editor/editor.main.js`
+
+### 변경 파일
+- `engine/editor/editor.block.js`
+- `engine/editor/editor.main.js`
+- `docs/단축키.md`
+- `docs/블럭_이동_규칙.md`
+- `docs/블럭_드래그_복제_회귀방지.md`
+- `docs/CHANGELOG.md`
+
+---
+
+## v1.3.1 — 2026-04-27 (미디어 우하단 핸들 Scale 동기화)
+
+> **Tag**: `media-scale-handle-2026-04-27`
+>
+> 이미지/영상 선택 시 뷰포트 우측 하단 핸들이 우측 패널의 `Scale`과 같은 방식으로 동작하도록 수정한 패치 릴리스.
+
+### 🖼️ 이미지/영상 리사이즈 핸들 수정
+- 기존: 뷰포트 우하단 핸들이 `media.style.width`만 직접 변경 → 프레임/크롭 상태와 패널 `Scale` 값이 분리됨.
+- 변경: 공용 `_startMediaScaleDrag(wrap,e)` 추가. 드래그 값이 `data-crop-scale`로 반영되고 `_cropApply()`를 통해 프레임과 미디어가 함께 갱신됨.
+- 우측 패널 `Scale` 입력/슬라이더와 뷰포트 핸들이 같은 상태 경로를 공유.
+- 저장된 HTML에서 복구되는 `.ed-resize-handle`도 동일한 공용 로직으로 연결.
+
+### 🧪 검증
+- `node --check engine/editor/editor.core.js`
+- `node --check engine/editor/editor.main.js`
+- `bash scripts/verify_engine.sh` — ALL GREEN
+
+### 변경 파일
+- `engine/editor/editor.core.js`
+- `engine/editor/editor.main.js`
+- `VERSION.md`
+- `CHANGELOG.md`
+
+---
+
 ## v1.3 — 2026-04-24 (엔진 물리 분할 — `editor.js` 4파일로 쪼갬)
 
 > **Tag**: `engine-split-2026-04-24`  ·  **Rollback**: `bash scripts/rollback_split.sh`

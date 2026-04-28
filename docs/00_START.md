@@ -2,6 +2,14 @@
 
 ---
 
+## 🤖 에이전트 최우선 규칙
+
+- 현재 에디터 작업의 공식 소스는 `engine/editor/` 아래 분리 모듈입니다.
+- `engine/editor.js`는 레거시 단일 파일/롤백 참고용이며, 새 기능 구현 또는 버그 수정 대상이 아닙니다.
+- Codex/Claude 등 자동화 에이전트는 작업 시작 시 루트 `AGENTS.md`를 먼저 확인하세요.
+
+---
+
 ## 🚀 빠른 시작
 
 ### 1단계: `서버시작.bat` 더블클릭
@@ -53,7 +61,7 @@
 ```
 
 - **Flat 구조**: 모든 파일이 한 폴더에 평평하게
-- **뷰어 전용**: editor.js 제거됨 — 편집은 원본에서만
+- **뷰어 전용**: 에디터 JS 제거됨 — 편집은 원본에서만
 - **폰트 임베드**: Google Fonts base64 → 인터넷 없이도 한글 정상
 - **완전 이식**: 다른 PC의 어느 경로(`C:\temp`, `D:\pre`, USB 등)에 둬도 작동
 
@@ -93,20 +101,34 @@
 ## 📂 폴더 구조
 
 ```
-├── 00_START.md                  ← 지금 이 파일
 ├── index.html                   ← 랜딩 페이지 (http://localhost:3000/)
 ├── 서버시작.bat                 ← Save/Export 서버 실행 (먼저 실행!)
 ├── 새프레젠테이션.bat            ← 새 브리프 생성
 ├── save-server.js               ← Node.js 서버
 ├── new-presentation.js
+├── docs/                        ← 문서/인수인계/버전 기록
+│   ├── 00_START.md              ← 지금 이 파일
+│   ├── VERSION.md
+│   ├── CHANGELOG.md
+│   ├── 단축키.md
+│   └── 에러이슈노트.md
 ├── presentations/               ← 프레젠테이션 작업 공간
 ├── engine/                      ← 엔진 코어
-│   ├── engine.css, presentation.js, editor.js
+│   ├── engine.css, presentation.js, panel-context.js
+│   ├── editor/                  ← 현재 에디터 소스 (공식)
+│   │   ├── editor.core.js
+│   │   ├── editor.block.js
+│   │   ├── editor.io.js
+│   │   └── editor.main.js
+│   ├── editor.js                ← 레거시 단일 파일/롤백 참고용 (수정 대상 아님)
 │   ├── template.html            ← 새 프레젠테이션 원본
 │   ├── EDITOR_DEV.md            ← 에디터 개발 레퍼런스
 │   └── EXPORT_CONTRACT.md       ← Export 자립성 계약 (수정 전 필독)
+├── scripts/
+│   └── verify_engine.sh         ← 공식 무결성 검사
 ├── samples/
-└── 에러이슈노트.md
+├── logs/                        ← 서버 로그
+└── backup/                      ← 백업/마일스톤
 ```
 
 ---
@@ -140,3 +162,11 @@
 - `engine/EDITOR_DEV.md` — 에디터 내부 구조
 - `engine/EXPORT_CONTRACT.md` — **Export 자립성 계약 (엔진 수정 전 반드시 읽을 것)**
 - `에러이슈노트.md` — 과거 트러블슈팅 기록
+
+### 엔진 수정 후 검증
+
+```bash
+bash scripts/verify_engine.sh
+```
+
+`scripts/verify_html.sh`는 하위 호환용 래퍼이며, 내부적으로 `verify_engine.sh`를 실행합니다.
