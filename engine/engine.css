@@ -287,6 +287,8 @@ body.editor-mode .ed-editing-block{outline:1.5px dashed rgba(62,207,142,.55)!imp
 body.ed-move-mode, body.ed-move-mode *{cursor:grab !important}
 body.ed-move-mode .ed-dragging, body.ed-move-mode .ed-dragging *{cursor:grabbing !important}
 body.editor-mode .ed-dragging{opacity:.85}
+body.ed-marquee-selecting,body.ed-marquee-selecting *{cursor:crosshair!important;-webkit-user-select:none!important;user-select:none!important}
+.ed-marquee-select{position:fixed;z-index:2600;border:1px solid var(--g);background:rgba(62,207,142,.12);box-shadow:0 0 0 1px rgba(62,207,142,.25) inset;pointer-events:none}
 .ed-media-wrap{position:absolute;display:block;isolation:isolate;left:50%;top:50%;transform:translate(-50%,-50%)}
 .ed-media-wrap img,.ed-media-wrap video,.ed-media-wrap iframe{display:block;-webkit-user-drag:none;user-select:none;pointer-events:none}
 .ed-media-wrap video,.ed-media-wrap iframe{pointer-events:auto}

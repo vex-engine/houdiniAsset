@@ -773,6 +773,23 @@ function toggleBlockSelection(el){
   if(typeof _setSel==='function')_setSel(selBlock);
 }
 
+function setBlockSelection(blocks){
+  const next=[...new Set((blocks||[]).filter(b=>b&&isBlock(b)))];
+  _clearBlockClasses(null);
+  editingBlock=null;
+  selBlocks=next;
+  selBlock=next[0]||null;
+  next.forEach(b=>{
+    b.classList.add(BLOCK.SEL_CLASS);
+    b.removeAttribute('contenteditable');
+  });
+  if(typeof _setSel==='function')_setSel(selBlock);
+  if(typeof attachHandles==='function')attachHandles();
+  if(next.length&&typeof startOverlayLoop==='function')startOverlayLoop();
+  if(!next.length&&typeof stopOverlayLoop==='function')stopOverlayLoop();
+  if(typeof syncSelectionOverlay==='function')syncSelectionOverlay();
+}
+
 /* 블럭 시스템에서 "현재 활성 블럭" 반환 — 외부에서 sel 대신 씀 */
 function currentBlock(){return editingBlock||selBlock;}
 

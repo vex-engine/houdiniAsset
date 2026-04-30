@@ -285,9 +285,106 @@ function blockFromPointerEvent(e){
   return null;
 }
 
+function rectsIntersect(a,b){
+  return a.left<=b.right&&a.right>=b.left&&a.top<=b.bottom&&a.bottom>=b.top;
+}
+
+function selectableBlocksInRect(slide,rect){
+  if(!slide||!rect)return[];
+  const seen=new Set();
+  return [...slide.querySelectorAll(BLOCK.TARGET_SEL+', '+BLOCK.TEXT_TAGS_SEL)].filter(el=>{
+    if(seen.has(el)||!isBlock(el)||el.closest(BLOCK.ARTIFACT_SEL)||el.closest('.speaker-notes'))return false;
+    seen.add(el);
+    const r=el.getBoundingClientRect();
+    if(r.width<=0||r.height<=0)return false;
+    return rectsIntersect(rect,r);
+  });
+}
+
+function clearNativeSelection(){
+  const s=window.getSelection&&window.getSelection();
+  if(s&&s.removeAllRanges)s.removeAllRanges();
+}
+
+function canStartMarqueeFromEvent(e){
+  const frame=document.querySelector('.slide-frame');
+  return !!(frame&&frame.contains(e.target));
+}
+
+function startMarqueeSelection(e){
+  const slide=curSlide();
+  if(!slide||!canStartMarqueeFromEvent(e))return false;
+  const sX=e.clientX,sY=e.clientY;
+  const additive=!!e.shiftKey;
+  const baseSelection=additive?[...(selBlocks&&selBlocks.length?selBlocks:(selBlock?[selBlock]:[]))]:[];
+  const mergedSelection=hits=>additive?[...new Set([...baseSelection,...hits])]:hits;
+  let box=null,started=false;
+  const currentRect=ev=>{
+    const x1=Math.min(sX,ev.clientX),y1=Math.min(sY,ev.clientY);
+    const x2=Math.max(sX,ev.clientX),y2=Math.max(sY,ev.clientY);
+    return {left:x1,top:y1,right:x2,bottom:y2,width:x2-x1,height:y2-y1};
+  };
+  const ensureBox=()=>{
+    if(box)return box;
+    box=document.createElement('div');
+    box.className='ed-marquee-select';
+    document.body.appendChild(box);
+    return box;
+  };
+  const mv=ev=>{
+    ev.preventDefault();
+    clearNativeSelection();
+    const r=currentRect(ev);
+    if(!started){
+      if(Math.hypot(ev.clientX-sX,ev.clientY-sY)<4)return;
+      started=true;
+      hideBar&&hideBar();
+      if(!additive)setBlockState(null,'idle');
+    }
+    const el=ensureBox();
+    el.style.left=r.left+'px';
+    el.style.top=r.top+'px';
+    el.style.width=r.width+'px';
+    el.style.height=r.height+'px';
+    if(typeof setBlockSelection==='function')setBlockSelection(mergedSelection(selectableBlocksInRect(slide,r)));
+  };
+  const up=ev=>{
+    document.removeEventListener('mousemove',mv);
+    document.removeEventListener('mouseup',up);
+    document.removeEventListener('selectstart',blockNativeSelect);
+    document.body.classList.remove('ed-marquee-selecting');
+    clearNativeSelection();
+    if(box)box.remove();
+    if(!started){
+      if(!additive){
+        setBlockState(null,'idle');
+        hideBar&&hideBar();
+      }
+      return;
+    }
+    if(started){
+      const finalBlocks=mergedSelection(selectableBlocksInRect(slide,currentRect(ev)));
+      if(typeof setBlockSelection==='function')setBlockSelection(finalBlocks);
+      if(finalBlocks.length){
+        showBar&&showBar(finalBlocks[0]);
+        msg&&msg(finalBlocks.length+'개 블럭 선택');
+      }
+    }
+  };
+  const blockNativeSelect=ev=>ev.preventDefault();
+  clearNativeSelection();
+  document.body.classList.add('ed-marquee-selecting');
+  document.addEventListener('selectstart',blockNativeSelect);
+  document.addEventListener('mousemove',mv);
+  document.addEventListener('mouseup',up);
+  e.preventDefault();
+  return true;
+}
+
 /* Click → select element, show toolbar, or drag media directly */
 document.addEventListener('mousedown',e=>{
   if(!isEd())return;
+  if(e.button!==0)return;
   if(e.target.closest(BLOCK.ARTIFACT_SEL))return;
 
   if(suppressNextSelect){suppressNextSelect=false;return;}
@@ -377,6 +474,10 @@ document.addEventListener('mousedown',e=>{
     startMoveDrag(clickedBlock,e);
     tbClosed=false;
     return;
+  }
+
+  if(!moveKeyHeld&&!isEditingText&&canStartMarqueeFromEvent(e)){
+    if(startMarqueeSelection(e))return;
   }
 
   /* 블럭 시스템 v2 — 한 겹 파고들기 */
