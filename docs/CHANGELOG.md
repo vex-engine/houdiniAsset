@@ -4,6 +4,50 @@ PPTX 엔진 버전 기록. 최신 버전이 위.
 
 ---
 
+## v1.3.3 — 2026-04-30 21:51 KST (프로젝트 컨텍스트 정리 + 미디어 드롭 위치 수정)
+
+> **Tag**: `pptx-project-context-and-media-drop-2026-04-30`
+>
+> **기준 커밋**: `75ece81` — `Translate agent rules to Korean`
+>
+> 브랜치 이름과 루트 인계 문서를 정리하고, 탐색기에서 이미지/영상을 드롭할 때 위치가 어긋나거나 한 프레임 튀어 보이던 문제를 수정했다.
+
+### 프로젝트/문서 기준 정리
+- GitHub 브랜치를 `codex/push-current-work`에서 `pptx`로 변경했다.
+- `AGENTS.md`를 한글 기반으로 전환하고, 문서/인계/변경 요약은 한글로 작성한다는 규칙을 추가했다.
+- 루트 `PROJECT_CONTEXT.md`를 추가해 현재 브랜치, 주요 변경, 재발 방지 메모, 검증 기준을 기록했다.
+- `apps` 저장소는 유지하고, `main`은 원격 기본 브랜치로 유지한다는 운영 기준을 명시했다.
+
+### 미디어 드롭 위치 수정
+- Windows 탐색기에서 이미지/영상을 드롭하면 실제 마우스 위치 중심에 배치되도록 수정했다.
+- 에디터 모드의 `[data-step]{transform:none!important}` 때문에 transform 기반 중심 보정이 무력화되는 문제를 피했다.
+- 드롭된 미디어의 표시 크기를 기준으로 `left/top`을 직접 계산한다.
+- 크기 보정 전 원시 드롭 좌표에 먼저 보이지 않도록 숨긴 뒤 표시해, 좌상단에서 커서 위치로 튀는 한 프레임 깜빡임을 제거했다.
+
+### 현재 작업트리 반영 사항
+- 편집 캔버스 zoom/pan API가 추가된 상태다.
+- 블럭 이동/복제에는 공용 스냅, Shift 축 잠금, 선택 핸들 정리가 들어간 상태다.
+- 서버와 `index.html`은 Git 메타데이터 표시를 지원한다.
+- `presentations/미드저니_나노바나나_그록_활용2/` 발표 복사본과 미디어가 추가됐다.
+
+### 검증
+- `node --check engine/editor/editor.core.js`
+- `bash scripts/verify_engine.sh` — ALL GREEN
+
+### 변경 파일
+- `AGENTS.md`
+- `PROJECT_CONTEXT.md`
+- `engine/editor/editor.core.js`
+- `docs/VERSION.md`
+- `docs/CHANGELOG.md`
+
+### 버전 기록 규칙
+- 이후 버전 기록은 `YYYY-MM-DD HH:mm KST` 형식으로 시간까지 남긴다.
+- `docs/VERSION.md`와 `docs/CHANGELOG.md`를 함께 갱신한다.
+- 기준 커밋 해시와 커밋 제목을 함께 적는다.
+
+---
+
 ## v1.3.2 — 2026-04-28 (블럭 드래그/Alt 복제 안정화)
 
 > **Tag**: `block-drag-alt-duplicate-2026-04-28`

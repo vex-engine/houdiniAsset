@@ -1,34 +1,36 @@
 # VERSION
 
-**현재 버전**: `v1.3.1` — **media-scale-handle-2026-04-27**
-**릴리스 날짜**: 2026-04-27
+## 현재 버전
 
-## 핵심 변경
-- 이미지/영상 선택 시 우측 하단 리사이즈 핸들이 우측 패널의 `Scale`과 같은 경로로 동작하도록 수정
-- 뷰포트 드래그 시 `data-crop-scale` + `_cropApply()` 기준으로 프레임과 미디어가 함께 확대/축소
-- 저장된 HTML에서 복구되는 미디어 핸들도 동일한 공용 스케일 드래그 로직 사용
+- 버전: `v1.3.3`
+- 이름: `pptx-project-context-and-media-drop-2026-04-30`
+- 릴리스 일시: 2026-04-30 21:51 KST
+- 기준 커밋: `75ece81` — `Translate agent rules to Korean`
+- 브랜치: `pptx`
 
-## v1.3.0 핵심 변경
-- `editor.js` (2858줄 / 128KB) → **4파일 물리 분할**
-  - `engine/editor/editor.core.js`  (604줄)
-  - `engine/editor/editor.block.js` (612줄)
-  - `engine/editor/editor.io.js`    (902줄)
-  - `engine/editor/editor.main.js`  (787줄)
-- `window.EA` 공개 API **54개 키 100% 동일** (jsdom 검증)
+## 버전 기록 규칙
 
-## 마일스톤 백업
-- `engine/_milestones/v2026-04-24_pre_split/`  — 분할 직전
-- `engine/_milestones/v2026-04-24_post_split/` — 분할 직후 (현재)
+- 새 기능, 버그 수정 묶음, 문서/운영 기준 변경을 커밋하고 푸시할 때는 이 파일과 `docs/CHANGELOG.md`를 함께 갱신한다.
+- 날짜만 쓰지 말고 `YYYY-MM-DD HH:mm KST` 형식으로 시간까지 기록한다.
+- 기준 커밋 해시와 커밋 제목을 함께 남긴다.
+- 문서 문장은 한글을 기본으로 작성한다.
 
-## 원클릭 롤백
-```bash
-bash scripts/rollback_split.sh
-```
+## v1.3.3 핵심 변경
+
+- 브랜치 이름을 `codex/push-current-work`에서 `pptx`로 변경하고 원격 `origin/pptx`에 반영했다.
+- 루트 인계 문서 `PROJECT_CONTEXT.md`를 추가하고, `AGENTS.md`에서 다음으로 읽도록 연결했다.
+- `AGENTS.md`와 `PROJECT_CONTEXT.md`를 한글 기반 문서로 정리했다.
+- Windows 탐색기에서 이미지/영상을 드래그앤드롭할 때 실제 마우스 위치 중심에 배치되도록 수정했다.
+- 드롭 직후 좌상단에 잠깐 보였다가 커서 위치로 이동하는 한 프레임 깜빡임을 제거했다.
+- 편집 캔버스 확대/이동, 오브젝트 스냅/축 잠금, 서버 Git 메타데이터 표시 등 현재 작업트리의 주요 변경사항을 루트 인계 문서에 기록했다.
 
 ## 이전 버전
-- v1.3.0 — 2026-04-24 (엔진 물리 분할)
-- v1.2 — 2026-04-24 (패널 컨텍스트 전환)
-- v1.1 — 2026-04-24 (블럭 시스템 v2)
-- v1.0 — 최초
+
+- `v1.3.2` — 2026-04-28 (블럭 드래그/Alt 복제 안정화)
+- `v1.3.1` — 2026-04-27 (미디어 우하단 핸들 Scale 동기화)
+- `v1.3.0` — 2026-04-24 (엔진 물리 분할)
+- `v1.2` — 2026-04-24 (패널 컨텍스트 전환)
+- `v1.1` — 2026-04-24 (블럭 시스템 v2)
+- `v1.0` — 최초
 
 자세한 변경 이력: [CHANGELOG.md](CHANGELOG.md)
