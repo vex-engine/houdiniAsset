@@ -301,49 +301,6 @@ function _uniquePersistName(used,preferred,mime,i){
   used.add(name.toLowerCase());
   return name;
 }
-function _basenameOfAssetRef(ref){
-  return String(ref||'').replace(/[?#].*$/,'').split(/[\\/]/).pop()||'';
-}
-function _hashFromAssetId(id){
-  const m=String(id||'').match(/^sha256-([a-f0-9]{64})$/i);
-  return m?m[1].toLowerCase():'';
-}
-function _assetIdFromHash(hash){
-  return hash?'sha256-'+String(hash).toLowerCase():'';
-}
-function _hexFromArrayBuffer(buf){
-  const a=new Uint8Array(buf);
-  let out='';
-  for(let i=0;i<a.length;i++)out+=(a[i]<16?'0':'')+a[i].toString(16);
-  return out;
-}
-async function _sha256ArrayBuffer(buf){
-  if(!window.crypto||!crypto.subtle||!crypto.subtle.digest)return '';
-  const digest=await crypto.subtle.digest('SHA-256',buf);
-  return _hexFromArrayBuffer(digest);
-}
-async function _sha256Blob(blob){
-  if(!blob||!blob.arrayBuffer)return '';
-  return _sha256ArrayBuffer(await blob.arrayBuffer());
-}
-async function _sha256Bytes(bytes){
-  if(!bytes)return '';
-  const view=bytes instanceof Uint8Array?bytes:new Uint8Array(bytes);
-  const buf=view.buffer.slice(view.byteOffset,view.byteOffset+view.byteLength);
-  return _sha256ArrayBuffer(buf);
-}
-function _seedAssetNamesFromClone(cl,used){
-  const byHash=new Map();
-  cl.querySelectorAll('img[src],video[src],source[src],audio[src]').forEach(el=>{
-    const src=el.getAttribute('src')||'';
-    if(!src||src.startsWith('blob:'))return;
-    const base=_basenameOfAssetRef(src);
-    if(base)used.add(base.toLowerCase());
-    const hash=_hashFromAssetId(el.getAttribute('data-asset-id'));
-    if(hash&&base&&!byHash.has(hash))byHash.set(hash,base);
-  });
-  return byHash;
-}
 async function _blobForURL(src,el){
   const entry=(typeof _blobFileMap!=='undefined')&&_blobFileMap.get(src);
   if(entry&&entry.file)return {blob:entry.file,name:entry.name||el.dataset?.filename||'clipboard_media'};
@@ -368,7 +325,12 @@ function _missingMediaPlaceholder(src,reason){
 async function _persistBlobMediaInClone(cl,writeBlob,opts){
   opts=opts||{};
   const used=new Set();
-  const nameByHash=_seedAssetNamesFromClone(cl,used);
+  cl.querySelectorAll('img[src],video[src],source[src],audio[src]').forEach(el=>{
+    const src=el.getAttribute('src')||'';
+    if(!src||src.startsWith('blob:'))return;
+    const base=src.replace(/[?#].*$/,'').split(/[\\/]/).pop();
+    if(base)used.add(base.toLowerCase());
+  });
   const saved=[],missing=[];
   const els=Array.from(cl.querySelectorAll('img[src^="blob:"],video[src^="blob:"],source[src^="blob:"],audio[src^="blob:"]'));
   for(let i=0;i<els.length;i++){
@@ -388,22 +350,12 @@ async function _persistBlobMediaInClone(cl,writeBlob,opts){
       }
       continue;
     }
-    const hash=await _sha256Blob(got.blob);
-    const assetId=_assetIdFromHash(hash);
-    let name=hash&&nameByHash.get(hash);
-    let didWrite=false;
-    if(!name){
-      name=_uniquePersistName(used,got.name||el.dataset?.filename,got.blob.type,i+1);
-      if(hash)nameByHash.set(hash,name);
-      await writeBlob(name,got.blob);
-      didWrite=true;
-    }
+    const name=_uniquePersistName(used,got.name||el.dataset?.filename,got.blob.type,i+1);
+    await writeBlob(name,got.blob);
     el.setAttribute('src',name);
     el.setAttribute('data-filename',name);
-    if(assetId)el.setAttribute('data-asset-id',assetId);
-    el.setAttribute('data-asset-bytes',String(got.blob.size||0));
     el.removeAttribute('data-source');
-    if(didWrite)saved.push({src,name,hash,bytes:got.blob.size,type:got.blob.type||'application/octet-stream'});
+    saved.push({src,name,bytes:got.blob.size,type:got.blob.type||'application/octet-stream'});
   }
   return {saved,missing};
 }
@@ -459,208 +411,18 @@ function _buildSaveHTML(){
    localhost:3000  → /presentations/xxx/file.html  → 그대로 상대경로
    file://         → 절대 경로에서 PPTX 루트 기준 상대경로 추출 시도
    ────────────────────────────────────────────────────────────── */
-let _currentFilePathOverride='';
-function _normalizeRelPathForEditor(p){
-  return String(p||'').replace(/\\/g,'/').replace(/^\/+/,'');
-}
 function _getFilePath(){
-  if(_currentFilePathOverride)return _currentFilePathOverride;
   const href=location.href;
   /* localhost */
   if(href.includes('localhost')||href.includes('127.0.0.1')){
     /* pathname = /presentations/xxx/file.html → 앞 / 제거 */
-    return _normalizeRelPathForEditor(decodeURIComponent(location.pathname.replace(/^\//,'')));
+    return decodeURIComponent(location.pathname.replace(/^\//,''));
   }
   /* file:// — 절대경로에서 PPTX 루트 이후 부분만 */
   const m=href.match(/[\/\\]PPTX[\/\\](.+\.html)/i);
-  if(m)return _normalizeRelPathForEditor(m[1]);
+  if(m)return m[1].replace(/\\/g,'/');
   /* 최후 수단: 파일명만 */
-  return _normalizeRelPathForEditor(location.pathname.split('/').pop()||'presentation.html');
-}
-function _setCurrentFilePath(filePath){
-  _currentFilePathOverride=_normalizeRelPathForEditor(filePath);
-}
-function _joinRelPath(){
-  return Array.from(arguments).filter(Boolean).join('/').replace(/\/+/g,'/');
-}
-function _dirnameRelPath(filePath){
-  const p=_normalizeRelPathForEditor(filePath);
-  const i=p.lastIndexOf('/');
-  return i>=0?p.slice(0,i):'';
-}
-function _servedUrlForRelPath(filePath){
-  if(!(location.href.includes('localhost')||location.href.includes('127.0.0.1')))return '';
-  const encoded=_normalizeRelPathForEditor(filePath).split('/').map(encodeURIComponent).join('/');
-  return location.origin.replace(/\/$/,'')+'/'+encoded;
-}
-function _basenameRelPath(filePath){
-  const p=_normalizeRelPathForEditor(filePath);
-  return p.split('/').pop()||'presentation.html';
-}
-function _escapeHTML(s){
-  return String(s==null?'':s).replace(/[<>&"]/g,c=>({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c]));
-}
-function _splitSaveAsPath(filePath){
-  const p=_normalizeRelPathForEditor(filePath);
-  return {dir:_dirnameRelPath(p),name:_basenameRelPath(p)};
-}
-function _targetPathFromSaveAsParts(dir,name){
-  const n=String(name||'').trim();
-  if(!n)throw new Error('파일 이름이 비어 있습니다.');
-  return _normalizeSaveAsTargetPath(_joinRelPath(String(dir||'').trim(),n));
-}
-function _normalizeSaveAsTargetPath(rawPath){
-  const current=_getFilePath();
-  const currentDir=_dirnameRelPath(current);
-  const presentationRoot=current.indexOf('presentations/')===0?_dirnameRelPath(currentDir):'';
-  let p=String(rawPath||'').trim().replace(/^["']|["']$/g,'').replace(/\\/g,'/');
-  let anchored=false;
-  if(!p)throw new Error('저장 경로가 비어 있습니다.');
-  try{
-    if(/^https?:\/\//i.test(p)){p=decodeURIComponent(new URL(p).pathname);anchored=true;}
-  }catch(e){}
-  const rootMatch=p.match(/(?:^|\/)PPTX\/(.+)$/i);
-  if(rootMatch){p=rootMatch[1];anchored=true;}
-  if(p.charAt(0)==='/')anchored=true;
-  p=p.replace(/^\/+/,'');
-  if(/^[a-z]:\//i.test(p))throw new Error('PPTX 폴더 밖 절대경로는 로컬 편집 파일로 전환할 수 없습니다.');
-  if(p.indexOf('./')===0)p=_joinRelPath(currentDir,p.slice(2));
-  else if(p.indexOf('/')<0&&!anchored)p=_joinRelPath(currentDir,p);
-  else if(p.indexOf('presentations/')!==0&&presentationRoot)p=_joinRelPath(presentationRoot,p);
-  if(p.endsWith('/'))p=_joinRelPath(p,_basenameRelPath(current));
-  if(!/\.html?$/i.test(p))p+='.html';
-  const parts=p.split('/').filter(Boolean);
-  if(!parts.length)throw new Error('저장 경로가 올바르지 않습니다.');
-  for(const part of parts){
-    if(part==='..'||part==='.')throw new Error('상위 폴더(..) 경로는 사용할 수 없습니다.');
-    if(/[<>:"|?*\x00-\x1F]/.test(part))throw new Error('파일/폴더 이름에 사용할 수 없는 문자가 있습니다: '+part);
-  }
-  return parts.join('/');
-}
-function _relPathBetween(fromDir,toPath){
-  const from=_normalizeRelPathForEditor(fromDir).split('/').filter(Boolean);
-  const to=_normalizeRelPathForEditor(toPath).split('/').filter(Boolean);
-  while(from.length&&to.length&&from[0]===to[0]){from.shift();to.shift();}
-  return '../'.repeat(from.length)+to.join('/');
-}
-function _localURLToAssetRef(src,sourceHtml){
-  try{
-    const u=new URL(src,location.href);
-    if(u.origin!==location.origin)return null;
-    const rootRel=decodeURIComponent(u.pathname.replace(/^\/+/,''));
-    if(!rootRel)return null;
-    return _relPathBetween(_dirnameRelPath(sourceHtml),rootRel);
-  }catch(e){return null}
-}
-function _isGeneratedSaveAsAssetRef(ref,assets){
-  const raw=String(ref||'').replace(/[?#].*$/,'');
-  if(!raw||raw.indexOf('/')>=0||raw.indexOf('\\')>=0)return false;
-  const lower=raw.toLowerCase();
-  return (assets||[]).some(a=>String(a&&a.name||'').toLowerCase()===lower);
-}
-function _uniqueAssetNameForSaveAs(used,preferred){
-  let base=(String(preferred||'media').replace(/[?#].*$/,'').split(/[\\/]/).pop()||'media')
-    .replace(/[<>:"/\\|?*\x00-\x1F]/g,'_').replace(/\s+/g,'_');
-  if(!base)base='media';
-  let name=base,n=2;
-  while(used.has(name.toLowerCase())){
-    const dot=base.lastIndexOf('.');
-    const stem=dot>0?base.slice(0,dot):base;
-    const ext=dot>0?base.slice(dot):'';
-    name=stem+'_'+(n++)+ext;
-  }
-  used.add(name.toLowerCase());
-  return name;
-}
-async function _readAssetAsSaveData(ref,sourceHtml){
-  const url=CFG.SAVE_API+'/read-asset?relTo='+encodeURIComponent(sourceHtml)+'&ref='+encodeURIComponent(ref);
-  const r=await fetch(url,{signal:AbortSignal.timeout(10000)});
-  const j=await r.json();
-  if(!j.ok)throw new Error(j.error||'asset read failed: '+ref);
-  return {data:'data:'+(j.mime||'application/octet-stream')+';base64,'+j.base64,bytes:j.bytes,mime:j.mime};
-}
-async function _collectSaveAsReferencedAssets(cl,targetPath,assets){
-  const sourceHtml=_getFilePath();
-  const used=new Set([_basenameRelPath(targetPath).toLowerCase()]);
-  (assets||[]).forEach(a=>{if(a&&a.name)used.add(String(a.name).toLowerCase())});
-  const refToName=new Map();
-
-  async function copyRef(ref,preferred){
-    if(!ref||_isGeneratedSaveAsAssetRef(ref,assets))return ref;
-    if(refToName.has(ref))return refToName.get(ref);
-    const name=_uniqueAssetNameForSaveAs(used,preferred||ref);
-    const read=await _readAssetAsSaveData(ref,sourceHtml);
-    assets.push({name,data:read.data});
-    refToName.set(ref,name);
-    return name;
-  }
-  async function rewriteAttr(el,attr){
-    const src=el.getAttribute(attr);
-    if(!src)return;
-    if(src.startsWith('blob:'))return;
-    if(src.startsWith('data:')){
-      const name=_uniqueAssetNameForSaveAs(used,'embedded_'+Math.random().toString(36).slice(2,8)+_guessExtFromDataURL(src));
-      assets.push({name,data:src});
-      el.setAttribute(attr,name);
-      return;
-    }
-    if(/^https?:\/\//i.test(src)){
-      const localRef=_localURLToAssetRef(src,sourceHtml);
-      if(!localRef)return;
-      el.setAttribute(attr,await copyRef(localRef,src));
-      return;
-    }
-    if(_isGeneratedSaveAsAssetRef(src,assets))return;
-    el.setAttribute(attr,await copyRef(src,src));
-  }
-
-  for(const el of cl.querySelectorAll('img[src],video[src],source[src],audio[src],iframe[src]')){
-    await rewriteAttr(el,'src');
-  }
-  for(const el of cl.querySelectorAll('[poster]')){
-    await rewriteAttr(el,'poster');
-  }
-  for(const el of cl.querySelectorAll('[style]')){
-    const st=el.getAttribute('style');
-    if(!st||!/url\(/i.test(st))continue;
-    const matches=[...st.matchAll(/url\((['"]?)([^'")]+)\1\)/gi)];
-    let rewritten=st;
-    for(const m of matches){
-      const u=m[2];
-      if(!u||u.startsWith('blob:')||/^https?:\/\//i.test(u)&&!_localURLToAssetRef(u,sourceHtml))continue;
-      let next=u;
-      if(u.startsWith('data:')){
-        const name=_uniqueAssetNameForSaveAs(used,'embedded_'+Math.random().toString(36).slice(2,8)+_guessExtFromDataURL(u));
-        assets.push({name,data:u});
-        next=name;
-      }else{
-        const ref=/^https?:\/\//i.test(u)?_localURLToAssetRef(u,sourceHtml):u;
-        if(ref&&!_isGeneratedSaveAsAssetRef(ref,assets))next=await copyRef(ref,u);
-      }
-      if(next!==u)rewritten=rewritten.split(m[0]).join('url('+m[1]+next+m[1]+')');
-    }
-    if(rewritten!==st)el.setAttribute('style',rewritten);
-  }
-}
-async function _checkSaveAsConflicts(targetPath,assets){
-  const r=await fetch(CFG.SAVE_API+'/exists',{
-    method:'POST',
-    headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({filePath:targetPath,assets:(assets||[]).map(a=>a&&a.name).filter(Boolean)}),
-    signal:AbortSignal.timeout(5000)
-  });
-  const j=await r.json();
-  if(!j.ok)throw new Error(j.error||'exists check failed');
-  return j;
-}
-async function _listSaveAsDirs(dir){
-  const r=await fetch(CFG.SAVE_API+'/list-dirs?dir='+encodeURIComponent(_normalizeRelPathForEditor(dir)),{
-    cache:'no-store',
-    signal:AbortSignal.timeout(5000)
-  });
-  const j=await r.json();
-  if(!j.ok)throw new Error(j.error||'folder list failed');
-  return j;
+  return location.pathname.split('/').pop()||'presentation.html';
 }
 
 /* ── Save: 포토샵처럼 현재 파일 직접 덮어씀 ──
@@ -871,7 +633,6 @@ async function exportHTML(){
     /* ── 7. 미디어 수집 + src를 basename으로 재작성 ── */
     const assetsToCopy=[]; /* [{ref, dstName, data?}] */
     const dstNameByRef=new Map();
-    const queuedAssetKeys=new Set();
     const usedNames=new Set();
     const sourceHtml=_getFilePath(); /* PPTX 루트 기준 상대경로 */
 
@@ -909,38 +670,6 @@ async function exportHTML(){
         return relPath(fromDir,rootRel);
       }catch(e){return null}
     }
-    function queueAsset(a){
-      const key=String(a.ref||'')+' -> '+String(a.dstName||'');
-      if(queuedAssetKeys.has(key))return;
-      queuedAssetKeys.add(key);
-      assetsToCopy.push(a);
-    }
-    function rewriteAssetRefs(fromName,toName){
-      if(!fromName||!toName||fromName===toName)return;
-      cl.querySelectorAll('[src]').forEach(el=>{
-        if(el.getAttribute('src')===fromName)el.setAttribute('src',toName);
-      });
-      cl.querySelectorAll('[poster]').forEach(el=>{
-        if(el.getAttribute('poster')===fromName)el.setAttribute('poster',toName);
-      });
-      cl.querySelectorAll('[style]').forEach(el=>{
-        const st=el.getAttribute('style');
-        if(!st||st.indexOf(fromName)<0)return;
-        const rewritten=st.replace(/url\((['"]?)([^'")]+)\1\)/gi,(m,q,u)=>{
-          return u===fromName?'url('+q+toName+q+')':m;
-        });
-        if(rewritten!==st)el.setAttribute('style',rewritten);
-      });
-    }
-    function markAssetMeta(name,hash,bytes){
-      if(!name||!hash)return;
-      cl.querySelectorAll('img[src],video[src],source[src],audio[src]').forEach(el=>{
-        if(el.getAttribute('src')!==name)return;
-        el.setAttribute('data-asset-id',_assetIdFromHash(hash));
-        if(bytes!=null)el.setAttribute('data-asset-bytes',String(bytes));
-        if(el.dataset)el.dataset.filename=name;
-      });
-    }
 
     /* 7a. <img src>, <video src>, <source src>, <audio src>, <iframe src> 처리 */
     const mediaSelectors='img[src],video[src],source[src],audio[src]';
@@ -951,7 +680,7 @@ async function exportHTML(){
       if(src.startsWith('data:')){
         const ref='embedded_'+Math.random().toString(36).slice(2,8)+_guessExtFromDataURL(src);
         const name=allocName(ref);
-        queueAsset({ref, dstName:name, data:src});
+        assetsToCopy.push({ref, dstName:name, data:src});
         el.setAttribute('src', name);
         continue;
       }
@@ -962,7 +691,7 @@ async function exportHTML(){
         if(entry && entry.file){
           const ref=src;
           const name=allocName(ref, entry.name||el.dataset?.filename||'blob_media');
-          queueAsset({ref, dstName:name, blob:entry.file, fallbackRef:entry.name||el.dataset?.filename||''});
+          assetsToCopy.push({ref, dstName:name, blob:entry.file, fallbackRef:entry.name||el.dataset?.filename||''});
           el.setAttribute('src', name);
         }else{
           /* 맵에 없음 — 페이지 리로드 후 src가 blob으로 남은 이상 상태.
@@ -972,7 +701,7 @@ async function exportHTML(){
             const r=await fetch(src); const b=await r.blob();
             const ref=src;
             const name=allocName(ref, fname);
-            queueAsset({ref, dstName:name, blob:b, fallbackRef:fname});
+            assetsToCopy.push({ref, dstName:name, blob:b, fallbackRef:fname});
             el.setAttribute('src', name);
           }catch(e){
             console.warn('[export] blob 원본 없음 (페이지 리로드됨?)', src, e);
@@ -988,14 +717,14 @@ async function exportHTML(){
         const localRef=localURLToAssetRef(src);
         if(localRef){
           const name=allocName(localRef);
-          queueAsset({ref:localRef, dstName:name});
+          assetsToCopy.push({ref:localRef, dstName:name});
           el.setAttribute('src', name);
         }
         continue;
       }
       /* 상대경로 / 절대경로 — 서버가 원본 읽어서 복사 */
       const name=allocName(src);
-      queueAsset({ref:src, dstName:name});
+      assetsToCopy.push({ref:src, dstName:name});
       el.setAttribute('src', name);
     }
 
@@ -1004,7 +733,7 @@ async function exportHTML(){
       const src=el.getAttribute('src');
       if(!src || /^https?:\/\//.test(src) || src.startsWith('data:')) continue;
       const name=allocName(src);
-      queueAsset({ref:src, dstName:name});
+      assetsToCopy.push({ref:src, dstName:name});
       el.setAttribute('src', name);
     }
 
@@ -1012,9 +741,8 @@ async function exportHTML(){
     for(const el of cl.querySelectorAll('[poster]')){
       const src=el.getAttribute('poster');
       if(src && !/^(data:|https?:)/.test(src)){
-        const already=dstNameByRef.has(src);
         const name=allocName(src);
-        if(!already) queueAsset({ref:src, dstName:name});
+        if(!dstNameByRef.has(src)) assetsToCopy.push({ref:src, dstName:name});
         el.setAttribute('poster', name);
       }
     }
@@ -1023,23 +751,37 @@ async function exportHTML(){
       if(st && /url\(/i.test(st)){
         const rewritten=st.replace(/url\((['"]?)([^'")]+)\1\)/gi,(m,q,u)=>{
           if(/^(data:|https?:|blob:)/.test(u)) return m;
-          const already=dstNameByRef.has(u);
           const name=allocName(u);
-          if(!already) queueAsset({ref:u, dstName:name});
+          if(!dstNameByRef.has(u)) assetsToCopy.push({ref:u, dstName:name});
           return 'url('+q+name+q+')';
         });
         if(rewritten!==st) el.setAttribute('style', rewritten);
       }
     }
 
-    /* ── 8. 브라우저가 직접 폴더에 파일 쓰기 (showDirectoryPicker 핸들) ── */
+    /* ── 8. deck-hash 업데이트 ── */
+    const expMeta=cl.querySelector('meta[name="deck-hash"]');
+    if(expDeck&&expMeta){
+      let h=5381;const s=expDeck.innerHTML;
+      for(let i=0;i<s.length;i++) h=((h<<5)+h+s.charCodeAt(i))>>>0;
+      expMeta.setAttribute('content', h.toString(36));
+    }
+
+    /* ── 9. 최종 HTML 완성 ── */
+    const fullHTML='<!DOCTYPE html>\n'+cl.outerHTML;
+
+    /* ── 10. 자체 검증 (외부 URL 잔존 스캔) ── */
+    const warnings=_validateExportedHTML(fullHTML);
+
+    /* ── 11. 브라우저가 직접 폴더에 파일 쓰기 (showDirectoryPicker 핸들) ── */
     msg('파일 쓰는 중…');
 
-    /* 8a. 미디어 하나씩 복사. 실제 bytes SHA-256 기준으로 같은 asset은 1번만 쓴다. */
+    /* 11a. HTML 먼저 쓰기 */
+    await _writeFileToDir(dirHandle, safeHtmlName, fullHTML, 'text/html;charset=utf-8');
+
+    /* 11b. 미디어 하나씩 복사 */
     const copied=[]; const missing=[];
-    const nameByHash=new Map();
-    let reusedCount=0;
-    async function readViaServer(ref){
+    async function copyViaServer(ref,dstName){
       const url=CFG.SAVE_API+'/read-asset?relTo='+encodeURIComponent(sourceHtml)+'&ref='+encodeURIComponent(ref);
       const r=await fetch(url);
       const j=await r.json();
@@ -1047,86 +789,48 @@ async function exportHTML(){
       const bin=atob(j.base64);
       const arr=new Uint8Array(bin.length);
       for(let k=0;k<bin.length;k++) arr[k]=bin.charCodeAt(k);
-      return {arr,bytes:j.bytes,mime:j.mime||'application/octet-stream'};
+      await _writeBytesToDir(dirHandle, dstName, arr, j.mime||'application/octet-stream');
+      return j.bytes;
     }
     for(let i=0;i<assetsToCopy.length;i++){
       const a=assetsToCopy[i];
       msg('미디어 복사 '+(i+1)+'/'+assetsToCopy.length+'…');
       try{
-        let bytes,hash,write;
+        let bytes;
         if(a.blob){
           /* 세션 맵에서 꺼낸 원본 File 객체 — 어느 폴더에 있었든 무관 */
-          hash=await _sha256Blob(a.blob);
-          bytes=a.blob.size;
-          write=()=>_writeBlobToDir(dirHandle, a.dstName, a.blob);
+          try{
+            await _writeBlobToDir(dirHandle, a.dstName, a.blob);
+            bytes=a.blob.size;
+          }catch(blobErr){
+            if(!a.fallbackRef)throw blobErr;
+            console.warn('[export] blob copy failed; trying source file fallback', a.ref, a.fallbackRef, blobErr);
+            bytes=await copyViaServer(a.fallbackRef, a.dstName);
+          }
         }else if(a.data){
           /* data URL — 브라우저에서 직접 디코드 */
           const blob=await (await fetch(a.data)).blob();
-          hash=await _sha256Blob(blob);
+          await _writeBlobToDir(dirHandle, a.dstName, blob);
           bytes=blob.size;
-          write=()=>_writeBlobToDir(dirHandle, a.dstName, blob);
         }else{
           /* 서버에서 원본 파일 받아오기 (HTML 기준 상대경로) */
-          const read=await readViaServer(a.ref);
-          hash=await _sha256Bytes(read.arr);
-          bytes=read.bytes;
-          write=()=>_writeBytesToDir(dirHandle, a.dstName, read.arr, read.mime);
+          bytes=await copyViaServer(a.ref, a.dstName);
         }
-        const canonical=hash&&nameByHash.get(hash);
-        if(canonical){
-          rewriteAssetRefs(a.dstName,canonical);
-          markAssetMeta(canonical,hash,bytes);
-          reusedCount++;
-          continue;
-        }
-        try{
-          await write();
-        }catch(writeErr){
-          if(!a.blob||!a.fallbackRef)throw writeErr;
-          console.warn('[export] blob copy failed; trying source file fallback', a.ref, a.fallbackRef, writeErr);
-          const read=await readViaServer(a.fallbackRef);
-          const fallbackHash=await _sha256Bytes(read.arr);
-          const fallbackCanonical=fallbackHash&&nameByHash.get(fallbackHash);
-          if(fallbackCanonical){
-            rewriteAssetRefs(a.dstName,fallbackCanonical);
-            markAssetMeta(fallbackCanonical,fallbackHash,read.bytes);
-            reusedCount++;
-            continue;
-          }
-          hash=fallbackHash||hash;
-          if(hash)nameByHash.set(hash,a.dstName);
-          await _writeBytesToDir(dirHandle, a.dstName, read.arr, read.mime);
-          bytes=read.bytes;
-        }
-        if(hash)nameByHash.set(hash,a.dstName);
-        markAssetMeta(a.dstName,hash,bytes);
-        copied.push({ref:a.ref, name:a.dstName, hash, bytes});
+        copied.push({ref:a.ref, name:a.dstName, bytes});
       }catch(e){
         console.warn('[export] copy failed', a.ref, e);
         missing.push({ref:a.ref, reason:e.message});
       }
     }
 
-    /* 8b. media dedupe rewrite까지 끝난 뒤 deck-hash/HTML을 최종화한다. */
-    const expMeta=cl.querySelector('meta[name="deck-hash"]');
-    if(expDeck&&expMeta){
-      let h=5381;const s=expDeck.innerHTML;
-      for(let i=0;i<s.length;i++) h=((h<<5)+h+s.charCodeAt(i))>>>0;
-      expMeta.setAttribute('content', h.toString(36));
-    }
-    const fullHTML='<!DOCTYPE html>\n'+cl.outerHTML;
-    const warnings=_validateExportedHTML(fullHTML);
-    await _writeFileToDir(dirHandle, safeHtmlName, fullHTML, 'text/html;charset=utf-8');
-
-    /* 8c. manifest — 누락/경고/dedupe 있을 때 생성 */
-    const needManifest = missing.length > 0 || warnings.length > 0 || reusedCount > 0;
+    /* 11c. manifest — 누락/경고 있을 때만 생성 (깨끗한 Export는 파일 오염 안 시킴) */
+    const needManifest = missing.length > 0 || warnings.length > 0;
     if(needManifest){
       const manifest={
         exportedAt: new Date().toISOString(),
         engineVersion: '2.1',
         html: { name:safeHtmlName, bytes: fullHTML.length },
         files: copied,
-        deduped: reusedCount,
         missing,
         warnings,
         totalBytes: copied.reduce((s,c)=>s+c.bytes,0) + fullHTML.length
@@ -1146,7 +850,6 @@ async function exportHTML(){
       let report='⚠ Export 완료 (주의 필요) → '+dirHandle.name+'/\n\n';
       report+='• HTML: '+safeHtmlName+'\n';
       report+='• 복사된 파일: '+copyCount+'개\n';
-      if(reusedCount>0)report+='• 중복 재사용: '+reusedCount+'개\n';
       if(missingCount>0){
         report+='• 누락: '+missingCount+'개\n';
         missing.forEach(m=>{ report+='   - '+m.ref+' ('+m.reason+')\n'; });
@@ -1159,8 +862,7 @@ async function exportHTML(){
       await confirmDlg(report,{okOnly:true});
       msg('⚠ Export 완료 — 누락/경고 있음');
     }else{
-      msg('✔ Export 완료 — '+dirHandle.name+'/'+safeHtmlName+' ('+copyCount+'개 미디어'
-        +(reusedCount?(', 중복 '+reusedCount+'개 재사용'):'')+')');
+      msg('✔ Export 완료 — '+dirHandle.name+'/'+safeHtmlName+' ('+copyCount+'개 미디어)');
     }
   }catch(e){
     console.error('[Export]',e);
@@ -1212,121 +914,6 @@ function inputDlg(label, defaultValue){
       if(e.key==='Enter'){ e.preventDefault(); ok(); }
       else if(e.key==='Escape'){ e.preventDefault(); cancel(); }
     };
-  });
-}
-
-function saveAsPathDlg(defaultPath){
-  return new Promise(resolve=>{
-    const parts=_splitSaveAsPath(defaultPath);
-    const d=document.createElement('div');
-    d.className='ed-confirm';
-    d.innerHTML='<div class="ed-confirm-box ed-saveas-box">'+
-      '<div class="ed-saveas-title">Save As</div>'+
-      '<label class="ed-saveas-label">저장 폴더</label>'+
-      '<div class="ed-saveas-row">'+
-        '<input type="text" class="ed-saveas-input ed-saveas-dir" value="'+_escapeHTML(parts.dir)+'" spellcheck="false">'+
-        '<button type="button" class="ed-saveas-browse-btn">폴더 찾기</button>'+
-      '</div>'+
-      '<label class="ed-saveas-label">파일 이름</label>'+
-      '<input type="text" class="ed-saveas-input ed-saveas-file" value="'+_escapeHTML(parts.name)+'" spellcheck="false">'+
-      '<div class="ed-saveas-preview"></div>'+
-      '<div class="ed-confirm-btns"><button class="cancel">취소</button><button class="ok">저장</button></div>'+
-    '</div>';
-    document.body.appendChild(d);
-    const dir=d.querySelector('.ed-saveas-dir');
-    const file=d.querySelector('.ed-saveas-file');
-    const preview=d.querySelector('.ed-saveas-preview');
-    const cleanup=()=>d.remove();
-    const render=()=>{
-      try{
-        const target=_targetPathFromSaveAsParts(dir.value,file.value);
-        preview.textContent=target;
-        preview.dataset.state='ok';
-        return target;
-      }catch(e){
-        preview.textContent=e.message;
-        preview.dataset.state='error';
-        return '';
-      }
-    };
-    const ok=()=>{
-      const target=render();
-      if(!target)return;
-      cleanup();
-      resolve(target);
-    };
-    const cancel=()=>{cleanup();resolve(null)};
-    d.querySelector('.ok').onclick=ok;
-    d.querySelector('.cancel').onclick=cancel;
-    d.querySelector('.ed-saveas-browse-btn').onclick=async()=>{
-      const chosen=await saveAsFolderDlg(dir.value||parts.dir||'');
-      if(chosen!=null){dir.value=chosen;render();file.focus();file.select();}
-    };
-    [dir,file].forEach(inp=>{
-      inp.addEventListener('input',render);
-      inp.addEventListener('keydown',e=>{
-        if(e.key==='Enter'){e.preventDefault();ok();}
-        else if(e.key==='Escape'){e.preventDefault();cancel();}
-      });
-    });
-    render();
-    setTimeout(()=>{file.focus();file.select();},50);
-  });
-}
-
-function saveAsFolderDlg(startDir){
-  return new Promise(resolve=>{
-    const d=document.createElement('div');
-    d.className='ed-confirm';
-    d.innerHTML='<div class="ed-confirm-box ed-saveas-box ed-saveas-folder-box">'+
-      '<div class="ed-saveas-title">저장 폴더 선택</div>'+
-      '<div class="ed-saveas-row">'+
-        '<input type="text" class="ed-saveas-input ed-saveas-folder-path" spellcheck="false">'+
-        '<button type="button" class="ed-saveas-go-btn">이동</button>'+
-      '</div>'+
-      '<div class="ed-saveas-folder-list"></div>'+
-      '<div class="ed-saveas-preview"></div>'+
-      '<div class="ed-confirm-btns"><button class="cancel">취소</button><button class="ok">이 폴더 선택</button></div>'+
-    '</div>';
-    document.body.appendChild(d);
-    const pathInput=d.querySelector('.ed-saveas-folder-path');
-    const list=d.querySelector('.ed-saveas-folder-list');
-    const status=d.querySelector('.ed-saveas-preview');
-    let current=_normalizeRelPathForEditor(startDir);
-    const cleanup=()=>d.remove();
-    const setStatus=(text,state)=>{status.textContent=text;status.dataset.state=state||'ok'};
-    async function load(dir){
-      current=_normalizeRelPathForEditor(dir);
-      pathInput.value=current;
-      list.innerHTML='<div class="ed-saveas-empty">불러오는 중...</div>';
-      setStatus(current||'(PPTX 루트)','ok');
-      try{
-        const j=await _listSaveAsDirs(current);
-        current=j.dir||'';
-        pathInput.value=current;
-        const rows=[];
-        if(j.parent!==current)rows.push('<button type="button" class="ed-saveas-folder-item" data-dir="'+_escapeHTML(j.parent||'')+'">.. 상위 폴더</button>');
-        (j.dirs||[]).forEach(item=>{
-          rows.push('<button type="button" class="ed-saveas-folder-item" data-dir="'+_escapeHTML(item.rel)+'">'+_escapeHTML(item.name)+'</button>');
-        });
-        list.innerHTML=rows.join('')||'<div class="ed-saveas-empty">하위 폴더 없음</div>';
-        list.querySelectorAll('.ed-saveas-folder-item').forEach(btn=>{
-          btn.onclick=()=>load(btn.getAttribute('data-dir')||'');
-        });
-      }catch(e){
-        list.innerHTML='<div class="ed-saveas-empty">폴더를 찾을 수 없습니다</div>';
-        setStatus(e.message,'error');
-      }
-    }
-    d.querySelector('.ed-saveas-go-btn').onclick=()=>load(pathInput.value);
-    d.querySelector('.ok').onclick=()=>{cleanup();resolve(_normalizeRelPathForEditor(pathInput.value))};
-    d.querySelector('.cancel').onclick=()=>{cleanup();resolve(null)};
-    pathInput.onkeydown=e=>{
-      if(e.key==='Enter'){e.preventDefault();load(pathInput.value);}
-      else if(e.key==='Escape'){e.preventDefault();cleanup();resolve(null);}
-    };
-    load(current);
-    setTimeout(()=>pathInput.focus(),50);
   });
 }
 
@@ -1471,10 +1058,6 @@ async function _embedGoogleFonts(cl){
 /* Export된 HTML 자체 검증 — 외부 URL/누락 참조 스캔 */
 function _validateExportedHTML(html){
   const warnings=[];
-  /* (0) 발표용 영상 런타임 누락 — export HTML은 presentation.js가 인라인되어야 함 */
-  if(/<video\b/i.test(html) && html.indexOf('__pptxVideoRuntime')<0){
-    warnings.push('영상 제어 런타임 누락 — engine/presentation.js 재인라인 또는 재Export 필요');
-  }
   /* (1) localhost/127.0.0.1 참조 = 절대 금지 (다른 PC에서 깨짐) */
   const localMatches=html.match(/https?:\/\/(localhost|127\.0\.0\.1)[^\s"')]*/g);
   if(localMatches && localMatches.length){
@@ -1513,9 +1096,9 @@ async function resetAll(){
 /* ============================================================
    SAVE AS — 로컬 전용 (서버 필수)
    ============================================================
-   - PPTX 루트 안의 새 상대경로로 저장하고 현재 편집 파일을 전환
+   - 임의 경로에 HTML 한 파일만 저장 (미디어 복사 없음)
    - editor.js 참조 유지 (다시 열어서 에디터로 편집 가능)
-   - PPTX 루트 밖으로 이식할 때는 Export 사용
+   - 다른 PC로 이식 안 됨 (이식은 Export 사용)
    - 서버 없으면 실패 (fallback 없음 — 명확한 에러)
    ============================================================ */
 async function saveAs(){
@@ -1524,64 +1107,37 @@ async function saveAs(){
       await confirmDlg('file:// 에서는 Save As 불가.\n\n서버시작.bat 실행 후 http://localhost:3000 에서 열어주세요.',{okOnly:true});
       return;
     }
-    let serverOk=false;
-    try{
-      const r=await fetch(CFG.SAVE_API+'/ping',{signal:AbortSignal.timeout(1500)});
-      const j=await r.json();
-      serverOk=!!j.ok;
-    }catch(e){}
-    if(!serverOk){
-      await confirmDlg('Save As는 로컬 저장 서버가 필요합니다.\n\n서버시작.bat 실행 후 http://localhost:3000 에서 다시 시도해주세요.',{okOnly:true});
+    if(!window.showDirectoryPicker){
+      await confirmDlg('이 브라우저는 폴더 선택을 지원하지 않습니다.\nChrome/Edge 최신 버전 사용해주세요.',{okOnly:true});
       return;
     }
 
-    const targetPath=await saveAsPathDlg(_getFilePath());
-    if(!targetPath){ msg('Save As 취소'); return; }
+    /* 폴더 선택 */
+    let dirHandle;
+    try{
+      dirHandle=await window.showDirectoryPicker({mode:'readwrite', id:'pptx-save-as', startIn:'documents'});
+    }catch(e){
+      if(e.name==='AbortError'){ msg('Save As 취소'); return; }
+      throw e;
+    }
+    /* 파일명 — location.pathname은 URL 인코딩 상태이므로 decodeURIComponent 필수 */
+    let defName='presentation.html';
+    try{ defName = decodeURIComponent(location.pathname.split('/').pop()||'presentation.html'); }catch(e){ defName = location.pathname.split('/').pop()||'presentation.html'; }
+    const fileName=await inputDlg('Save As — 파일명:', defName);
+    if(!fileName){ msg('Save As 취소'); return; }
+    const safeName=fileName.replace(/[<>:"/\\|?*\x00-\x1F]/g,'_');
 
     msg('다른 이름으로 저장 중…');
     const{cl,expDeck,expMeta}=_buildSaveHTML();
-    const assets=[];
-    const blobResult=await _persistBlobMediaInClone(cl,async(name,blob)=>{
-      assets.push({name,data:await _blobToBase64(blob)});
-    },{removeMissing:true});
-    await _collectSaveAsReferencedAssets(cl,targetPath,assets);
-    _ensureEditableExternalEngine(cl,targetPath);
+    const blobResult=await _persistBlobMediaInClone(cl,(name,blob)=>_writeBlobToDir(dirHandle,name,blob),{removeMissing:true});
+    _ensureEditableExternalEngine(cl,safeName,{base:location.origin.replace(/\/$/,'')+'/engine/'});
     const fullHTML='<!DOCTYPE html>\n'+cl.outerHTML;
-    const conflicts=await _checkSaveAsConflicts(targetPath,assets);
-    if(conflicts.file||(conflicts.assets&&conflicts.assets.length)){
-      let report='같은 이름의 파일이 이미 있습니다.\n\n';
-      if(conflicts.file)report+='HTML: '+targetPath+'\n';
-      if(conflicts.assets&&conflicts.assets.length){
-        report+='미디어: '+conflicts.assets.slice(0,8).join(', ');
-        if(conflicts.assets.length>8)report+=' 외 '+(conflicts.assets.length-8)+'개';
-        report+='\n';
-      }
-      report+='\n덮어쓸까요?';
-      if(!await confirmDlg(report)){msg('Save As 취소');return;}
-    }
-    const res=await fetch(CFG.SAVE_API+'/save',{
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({filePath:targetPath,html:fullHTML,assets}),
-      signal:AbortSignal.timeout(10000)
-    });
-    const json=await res.json();
-    if(!json.ok)throw new Error(json.error);
+    await _writeFileToDir(dirHandle, safeName, fullHTML, 'text/html;charset=utf-8');
     _removeDeadBlobMediaFromLive(blobResult.missing);
-    try{
-      localStorage.removeItem(CFG.LS_SAVE);
-      localStorage.removeItem(CFG.LS_HASH);
-      localStorage.setItem('ed_reopen_editor_path',targetPath);
-    }catch(e){}
+    try{localStorage.setItem(CFG.LS_SAVE,expDeck?expDeck.innerHTML:'');localStorage.setItem(CFG.LS_HASH,expMeta?expMeta.getAttribute('content'):'')}catch(e){}
     _setDirty(false);
-    _setCurrentFilePath(targetPath);
-    msg('✔ Save As 완료 → 새 파일로 이동 중… '+targetPath
+    msg('✔ Save As 완료 → '+dirHandle.name+'/'+safeName
       +(blobResult.missing.length?' (죽은 blob '+blobResult.missing.length+'개 자동 삭제)':''));
-    const nextUrl=_servedUrlForRelPath(targetPath);
-    setTimeout(()=>{
-      if(nextUrl&&nextUrl!==location.href)location.href=nextUrl;
-      else location.reload();
-    },500);
   }catch(e){console.error('[SaveAs]',e);msg('Save As 실패: '+e.message)}
 }
 

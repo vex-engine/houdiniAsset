@@ -1,5 +1,10 @@
 # Agent Rules — Read First
 
+## Session Context — Read Next
+
+- After this file, read `PROJECT_CONTEXT.md` in the repository root before planning or editing.
+- `PROJECT_CONTEXT.md` is the rolling handoff for the current project state, recent major changes, and user workflow preferences.
+
 ## Current Editor Source Only
 
 - Work on the split editor modules under `engine/editor/`.

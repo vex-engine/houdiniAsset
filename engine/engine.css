@@ -18,7 +18,6 @@ html,body{width:100%;height:100%;overflow:hidden;font-family:'Noto Sans KR','Int
 :root{
   /* 슬라이드 콘텐츠용 (검정 배경 유지) */
   --g:#3ECF8E;--gl:#5EEAA0;--gd:#2a8f60;
-  --link:#FFB020;--link-hover:#FFD166;
   --w:#fff;--gr:#888;--grd:#555;--grdd:#333;
   --bg:#000;--card:#0d0d0d;--surf:#141414;--bdr:#222;
   --canvas-w:1920px;--canvas-h:1080px;
@@ -47,10 +46,6 @@ html,body{width:100%;height:100%;overflow:hidden;font-family:'Noto Sans KR','Int
 .slide ul{list-style:none;text-align:left;max-width:680px;width:100%}
 .slide li{padding:.45em 0;padding-left:1.4em;position:relative;text-align:left}
 .slide li::before{content:'>';position:absolute;left:0;color:var(--g);font-family:'JetBrains Mono',monospace;font-weight:700}
-.slide a{color:var(--link);text-decoration-color:color-mix(in srgb,var(--link) 70%,transparent);text-underline-offset:.16em}
-.slide a:hover{color:var(--link-hover);text-decoration-color:var(--link-hover)}
-.slide .demo-url,.slide .url,.slide [data-role="url"]{color:var(--link)}
-.slide .demo-url a,.slide .url a,.slide [data-role="url"] a{color:inherit}
 .top-label{font-size:15px;color:var(--grd);font-family:'JetBrains Mono',monospace;margin-bottom:1.2em;letter-spacing:.05em}
 .bottom-comment{font-size:14px!important;color:var(--grd)!important;font-family:'JetBrains Mono',monospace!important;margin-top:1.5em}
 .green{color:var(--g)!important}.gl{color:var(--gl)!important}.white{color:var(--w)!important}
@@ -97,6 +92,9 @@ body.show-notes .speaker-notes{display:block;position:fixed;bottom:0;left:0;righ
    EDITOR MODE — CSS
    ================================================================ */
 body.editor-mode .slide-frame{left:240px;right:280px;width:auto;inset:0 280px 0 240px}
+body.editor-mode .slide-deck{will-change:transform}
+body.ed-canvas-panning,body.ed-canvas-panning *{cursor:grabbing!important;user-select:none!important}
+body.ed-canvas-panning .ed-media-wrap video,body.ed-canvas-panning .ed-media-wrap iframe{pointer-events:none!important}
 body.editor-mode .help-hint{display:none}
 body.editor-mode .slide-controls{left:0;right:0}
 body.editor-mode [data-step]{opacity:1!important;transform:none!important;pointer-events:auto!important}
@@ -125,12 +123,6 @@ body.editor-mode .ed-file-bar{display:flex}
 .ed-file-bar .fb-reset:hover{background:var(--ui-danger-bg);border-color:var(--ui-danger)}
 .ed-file-bar .fb-exit{color:var(--ui-text);border-color:var(--ui-bdr)}
 .ed-file-bar .fb-exit:hover{background:var(--ui-bg-3);color:var(--ui-text)}
-.ed-server-status{margin-left:8px;padding:5px 10px;border:1px solid var(--ui-bdr);border-radius:999px;background:rgba(0,0,0,.72);color:var(--ui-text-2);font:700 10px/1 'JetBrains Mono',monospace;letter-spacing:.02em;white-space:nowrap;box-shadow:0 0 0 1px rgba(0,0,0,.35),0 4px 14px rgba(0,0,0,.22)}
-.ed-server-status[data-state="ok"]{color:var(--g);border-color:rgba(62,207,142,.75);background:rgba(62,207,142,.13)}
-.ed-server-status[data-state="warn"]{color:var(--link);border-color:rgba(255,176,32,.85);background:rgba(255,176,32,.15)}
-.ed-server-status[data-state="danger"]{color:#ff6b6b;border-color:rgba(255,107,107,.9);background:rgba(255,107,107,.16);animation:edPulseWarn 1.4s ease-in-out infinite}
-.ed-server-status[data-state="checking"]{color:var(--ui-text-2);border-color:var(--ui-bdr)}
-@keyframes edPulseWarn{0%,100%{box-shadow:0 0 0 1px rgba(255,107,107,.16),0 4px 14px rgba(0,0,0,.22)}50%{box-shadow:0 0 0 4px rgba(255,107,107,.2),0 4px 14px rgba(0,0,0,.22)}}
 .ed-nav-header{padding:10px 16px;border-bottom:1px solid var(--ui-bdr);display:flex;align-items:center;justify-content:space-between}
 .ed-nav-header h3{font-size:13px;color:var(--g);font-family:'JetBrains Mono',monospace;font-weight:700}
 .ed-nav-close{background:none;border:none;color:var(--ui-text-2);font-size:18px;cursor:pointer;padding:2px 6px;border-radius:4px}
@@ -358,23 +350,6 @@ body.editor-mode .ed-mode-badge{display:block}
 .ed-confirm-btns button{padding:8px 20px;border-radius:6px;font-size:13px;cursor:pointer;border:1px solid var(--ui-bdr);font-family:'Noto Sans KR',sans-serif}
 .ed-confirm-btns .cancel{background:var(--ui-bg-2);color:var(--ui-text)}
 .ed-confirm-btns .ok{background:rgba(255,95,87,.15);color:var(--ui-danger);border-color:var(--ui-danger)}
-.ed-saveas-box{width:min(720px,calc(100vw - 48px));max-width:720px;text-align:left;padding:18px 20px}
-.ed-saveas-title{font:700 13px/1.2 'JetBrains Mono','Noto Sans KR',monospace;color:var(--g);margin-bottom:14px;letter-spacing:.02em}
-.ed-saveas-label{display:block;margin:10px 0 6px;color:var(--ui-text-2);font:700 10px/1 'JetBrains Mono',monospace;text-transform:uppercase;letter-spacing:.08em}
-.ed-saveas-row{display:grid;grid-template-columns:minmax(0,1fr) 132px;gap:8px;align-items:center}
-.ed-saveas-input{width:100%;box-sizing:border-box;background:#050505;border:1px solid var(--ui-bdr);border-radius:4px;color:var(--ui-text);font:13px/1.35 'JetBrains Mono','Noto Sans KR',monospace;padding:8px 10px;outline:none}
-.ed-saveas-input:focus{border-color:var(--g);box-shadow:0 0 0 2px rgba(62,207,142,.14)}
-.ed-saveas-browse-btn,.ed-saveas-go-btn{height:36px;background:var(--ui-bg-3);border:1px solid var(--ui-bdr);border-radius:4px;color:var(--ui-text);font:700 12px/1 'Noto Sans KR',sans-serif;cursor:pointer}
-.ed-saveas-browse-btn:hover,.ed-saveas-go-btn:hover{border-color:var(--ui-accent-bdr);background:var(--ui-accent-bg)}
-.ed-saveas-preview{margin:10px 0 14px;min-height:18px;color:var(--ui-text-2);font:11px/1.45 'JetBrains Mono','Noto Sans KR',monospace;word-break:break-all}
-.ed-saveas-preview[data-state="ok"]{color:var(--g)}
-.ed-saveas-preview[data-state="error"]{color:var(--ui-danger)}
-.ed-saveas-box .ed-confirm-btns .ok{background:var(--ui-accent-bg);color:var(--g);border-color:var(--ui-accent-bdr)}
-.ed-saveas-folder-box{max-width:560px}
-.ed-saveas-folder-list{height:260px;overflow:auto;margin:10px 0;border:1px solid var(--ui-bdr);border-radius:6px;background:#090909;padding:6px}
-.ed-saveas-folder-item{display:block;width:100%;padding:8px 10px;margin:0 0 4px;background:transparent;border:1px solid transparent;border-radius:4px;color:var(--ui-text);font:12px/1.2 'Noto Sans KR',sans-serif;text-align:left;cursor:pointer}
-.ed-saveas-folder-item:hover{background:var(--ui-accent-bg);border-color:var(--ui-accent-bdr)}
-.ed-saveas-empty{padding:18px 10px;color:var(--ui-text-3);font-size:12px;text-align:center}
 
 /* ============================================================
    ANIMATION PRESETS — char-level keyframes

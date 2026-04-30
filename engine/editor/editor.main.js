@@ -11,51 +11,13 @@
    ============================================================ */
 /* Shared drag logic — positions in px within fixed canvas, mouse deltas ÷ deckScale */
 function startDrag(el,e){
-  push();el.classList.add('ed-dragging');
-  /* 블럭 시스템 v2 — 드래그 중인 블럭을 SELECTED로 유지 */
-  if(typeof setBlockState==='function'&&isBlock(el)){
-    setBlockState(el,'select');
-  }
-  suppressNextSelect=true; /* 드래그 중/직후 clickBlockAt이 재선택 못 하게 */
-  if(!el.classList.contains('ed-media-wrap'))el.style.position='relative';
-  /* For absolute media wraps: convert centering transform to px on first drag */
-  if(el.classList.contains('ed-media-wrap')&&(!el.style.left||el.style.transform==='translate(-50%, -50%)')){
-    const sc=pAPI.deckScale;
-    const r=el.getBoundingClientRect(),pr=el.parentElement.getBoundingClientRect();
-    el.style.transform='none';el.style.left=Math.round((r.left-pr.left)/sc)+'px';el.style.top=Math.round((r.top-pr.top)/sc)+'px';
-  }
-  const sc=pAPI.deckScale;
-  const oL=parseFloat(el.style.left)||0,oT=parseFloat(el.style.top)||0;
-  const sX=e.clientX,sY=e.clientY;
-  /* Snap center: element's center in canvas coords */
-  const rect0=el.getBoundingClientRect(),deckRect=deck.getBoundingClientRect();
-  const cx0=(rect0.left-deckRect.left)/sc+rect0.width/sc/2;
-  const cy0=(rect0.top-deckRect.top)/sc+rect0.height/sc/2;
-  const mv=ev=>{
-    const dx=(ev.clientX-sX)/sc,dy=(ev.clientY-sY)/sc;
-    let nx=oL+dx,ny=oT+dy;
-    const gr=guide._r;
-    if(gr){
-      const cx=cx0+(nx-oL),cy=cy0+(ny-oT);
-      const gcx=gr.x+gr.w/2,gcy=gr.y+gr.h/2;
-      if(Math.abs(cx-gcx)<CFG.SNAP_PX){snapV.style.left=Math.round(gcx)+'px';snapV.style.display='block';nx+=gcx-cx}else snapV.style.display='none';
-      if(Math.abs(cy-gcy)<CFG.SNAP_PX){snapH.style.top=Math.round(gcy)+'px';snapH.style.display='block';ny+=gcy-cy}else snapH.style.display='none';
+  if(!el)return;
+  if(typeof setBlockState==='function'&&typeof isBlock==='function'&&isBlock(el)){
+    if(!(selBlocks&&selBlocks.length>1&&selBlocks.includes(el))){
+      setBlockState(el,'select');
     }
-    el.style.left=nx+'px';el.style.top=ny+'px';
-    /* Sync resize handles position after move */
-    const s2=curSlide();if(s2){
-      s2.querySelectorAll('.ed-block-resize,.ed-block-resize-w,.ed-block-resize-e').forEach(rh=>{
-        if(rh._targetEl===el&&rh._posRH)rh._posRH();
-      });
-    }
-  };
-  const up=()=>{
-    el.classList.remove('ed-dragging');snapH.style.display='none';snapV.style.display='none';
-    document.removeEventListener('mousemove',mv);document.removeEventListener('mouseup',up);
-    /* 드래그 끝난 후 다음 tick에 suppress 해제 (mousedown→mouseup→click 순으로 이벤트가 옴) */
-    setTimeout(()=>{suppressNextSelect=false;},10);
-  };
-  document.addEventListener('mousemove',mv);document.addEventListener('mouseup',up);
+  }
+  if(typeof startMoveDrag==='function')startMoveDrag(el,e);
 }
 
 function attachHandles(){
@@ -270,7 +232,13 @@ function attachHandles(){
 function toggle(){
   const active=document.body.classList.toggle('editor-mode');
   /* Recalculate scale after mode switch (frame size changes due to panels) */
-  setTimeout(()=>pAPI.updateScale(),50);
+  const refreshViewport=()=>{
+    pAPI.updateScale();
+    if(typeof upGuide==='function')upGuide();
+    if(typeof syncSelectionOverlay==='function')syncSelectionOverlay();
+  };
+  setTimeout(refreshViewport,50);
+  setTimeout(refreshViewport,360);
   if(active){
     pAPI.S.step=pAPI.S.info[pAPI.S.cur].max;pAPI.render();on();buildNav();upGuide();upGrid();renderSw();tbClosed=false;
     _setDirty(false); /* 에디터 진입 시 초기 상태는 clean */
@@ -316,13 +284,6 @@ function blockFromPointerEvent(e){
   }
   return null;
 }
-function isNativeVideoControlHit(e,v){
-  if(!v||!v.controls||!v.getBoundingClientRect)return false;
-  const r=v.getBoundingClientRect();
-  if(!r.width||!r.height)return false;
-  const controlH=Math.min(72,Math.max(42,r.height*0.18));
-  return e.clientY>=r.bottom-controlH;
-}
 
 /* Click → select element, show toolbar, or drag media directly */
 document.addEventListener('mousedown',e=>{
@@ -333,11 +294,9 @@ document.addEventListener('mousedown',e=>{
 
   const clickedBlock=blockFromPointerEvent(e);
   const isEditingText=e.target.closest&&e.target.closest('[contenteditable="true"]');
-  const clickedVideo=e.target.closest&&e.target.closest('video');
-  const clickedVideoControl=isNativeVideoControlHit(e,clickedVideo);
 
   /* Alt + 드래그 = 단일 블럭 복제 후 드롭 위치로 이동 */
-  if(e.altKey&&clickedBlock&&!isEditingText&&!clickedVideoControl){
+  if(e.altKey&&clickedBlock&&!isEditingText){
     setBlockState(clickedBlock,'select');
     showBar&&showBar(clickedBlock);
     startDuplicateDrag(clickedBlock,e);
@@ -345,7 +304,7 @@ document.addEventListener('mousedown',e=>{
   }
 
   /* Space + 드래그 = 기존 선택 블럭(들) 이동 */
-  if(moveKeyHeld&&clickedBlock&&!isEditingText&&!clickedVideoControl){
+  if(moveKeyHeld&&clickedBlock&&!isEditingText){
     let anchor=selBlock;
     if(!anchor || !selBlocks.includes(clickedBlock)){
       if(selBlocks.length<=1){
@@ -370,21 +329,41 @@ document.addEventListener('mousedown',e=>{
     setBlockState(mw,'select');
     showBar(mw);
     _syncVideoButtons(mw.querySelector('video'));
-    if(clickedVideoControl){
-      _edMarkVideo(clickedVideo);
-      return;
-    }
     startMoveDrag(mw, e);
     return;
   }
 
   /* Shift+클릭 = 다중 선택 토글 */
-  if(e.shiftKey){
+  if(e.shiftKey&&!isEditingText){
     const blk=findBlock(e.target);
     if(blk){
-      toggleBlockSelection(blk);
-      showBar(blk);
-      tbClosed=false;
+      const sX=e.clientX,sY=e.clientY;
+      let dragged=false;
+      const mv=ev=>{
+        if(dragged)return;
+        if(Math.hypot(ev.clientX-sX,ev.clientY-sY)<3)return;
+        dragged=true;
+        document.removeEventListener('mousemove',mv);
+        document.removeEventListener('mouseup',up);
+        if(!(selBlocks&&selBlocks.length>1&&selBlocks.includes(blk))){
+          setBlockState(blk,'select');
+          showBar&&showBar(blk);
+        }else{
+          showBar&&showBar(blk);
+        }
+        startMoveDrag(blk,e,{initialMoveEvent:ev});
+      };
+      const up=()=>{
+        document.removeEventListener('mousemove',mv);
+        document.removeEventListener('mouseup',up);
+        if(dragged)return;
+        toggleBlockSelection(blk);
+        showBar(blk);
+        tbClosed=false;
+      };
+      document.addEventListener('mousemove',mv);
+      document.addEventListener('mouseup',up);
+      e.preventDefault();
       return;
     }
   }
@@ -513,83 +492,6 @@ function _syncVideoButtons(v){
   if(bm){bm.textContent=v&&!v.muted?'소리 ON':'소리 OFF';bm.style.color=v&&!v.muted?'var(--g)':'';}
   if(bp){bp.textContent=v&&!v.paused?'⏸ 일시정지':'▶ 재생';bp.style.color=v&&!v.paused?'var(--g)':'';}
 }
-let _edActiveVideo=null;
-const _edEndedVideos=new WeakSet();
-function _edMarkVideo(v){
-  if(!v)return;
-  _edActiveVideo=v;
-  const d=Number(v.duration);
-  if(Number.isFinite(d)&&d>0&&v.currentTime<d-0.15)_edEndedVideos.delete(v);
-  _syncVideoButtons(v);
-}
-function _edIsVideoVisible(v){
-  const s=curSlide&&curSlide();
-  if(!v||!s||!s.contains(v))return false;
-  const cs=getComputedStyle(v);
-  if(cs.display==='none'||cs.visibility==='hidden'||cs.opacity==='0')return false;
-  return v.getClientRects().length>0;
-}
-function _edVisibleVideos(){
-  const s=curSlide&&curSlide();
-  return s?Array.from(s.querySelectorAll('video')).filter(_edIsVideoVisible):[];
-}
-function _edVideoTarget(){
-  const list=_edVisibleVideos();
-  if(!list.length)return null;
-  const playing=list.find(v=>!v.paused&&!v.ended);
-  if(playing){_edMarkVideo(playing);return playing;}
-  if(_edActiveVideo&&list.includes(_edActiveVideo)&&!_edEndedVideos.has(_edActiveVideo))return _edActiveVideo;
-  const selected=_getSelVideo();
-  if(selected&&list.includes(selected)&&!_edEndedVideos.has(selected)){_edMarkVideo(selected);return selected;}
-  const fresh=list.find(v=>!_edEndedVideos.has(v));
-  if(fresh){_edMarkVideo(fresh);return fresh;}
-  return null;
-}
-function _edClampVideoTime(v,t){
-  const d=Number(v.duration);
-  if(Number.isFinite(d)&&d>0)return Math.max(0,Math.min(d,t));
-  return Math.max(0,t);
-}
-function _edHandleVideoKey(e){
-  if(e.ctrlKey||e.metaKey||e.altKey)return false;
-  const k=e.key===' '||e.code==='Space'?'Space':e.key;
-  if(k!=='Space'&&k!=='ArrowLeft'&&k!=='ArrowRight')return false;
-  const v=_edVideoTarget();
-  if(!v)return false;
-  e.preventDefault();
-  e.stopPropagation();
-  _edMarkVideo(v);
-  if(k==='Space'){
-    if(v.paused){try{const p=v.play();if(p&&p.catch)p.catch(()=>{});msg('재생');}catch(_){msg('재생 실패')}}
-    else{try{v.pause();msg('일시정지');}catch(_){}}
-  }else{
-    v.currentTime=_edClampVideoTime(v,(Number(v.currentTime)||0)+(k==='ArrowRight'?5:-5));
-  }
-  _syncVideoButtons(v);
-  return true;
-}
-['pointerdown','mousedown','click','seeking','seeked','play','pause','timeupdate'].forEach(type=>{
-  document.addEventListener(type,e=>{
-    const v=e.target&&e.target.closest&&e.target.closest('video');
-    if(v&&isEd())_edMarkVideo(v);
-  },true);
-});
-document.addEventListener('timeupdate',e=>{
-  const v=e.target;
-  if(!v||v.tagName!=='VIDEO')return;
-  const d=Number(v.duration);
-  if(Number.isFinite(d)&&d>0&&v.currentTime<d-0.15)_edEndedVideos.delete(v);
-},true);
-document.addEventListener('ended',e=>{
-  const v=e.target;
-  if(!v||v.tagName!=='VIDEO'||v.loop)return;
-  const d=Number(v.duration);
-  if(Number.isFinite(d)&&d>0){try{v.currentTime=d;}catch(_){}}
-  try{v.pause();}catch(_){}
-  _edEndedVideos.add(v);
-  if(_edActiveVideo===v)_edActiveVideo=null;
-  _syncVideoButtons(v);
-},true);
 /* 영상 컨트롤 — 속성 변경과 실시간 재생 상태를 동시에 반영.
    · 재생 중이어도 즉시 효과가 나타나도록 play/pause/muted 를 직접 조작한다.
    · autoplay 는 저장 후 재생 시에도 동일하게 작동하도록 속성도 같이 반영. */
@@ -682,8 +584,6 @@ document.addEventListener('keydown',e=>{
   }
   /* Ctrl+D = duplicate element (텍스트 편집 중에는 브라우저 기본 동작 양보) */
   if(e.ctrlKey&&!e.shiftKey&&(e.key==='d'||e.key==='D')&&!editingBlock&&!e.target.isContentEditable){e.preventDefault();dupEl();return}
-
-  if(!e.target.isContentEditable&&_edHandleVideoKey(e))return;
 
   /* ── Space 홀드 = 이동 모드 ── */
   if(e.code==='Space'&&!e.target.isContentEditable&&!e.repeat){
@@ -993,14 +893,6 @@ try{
   document.querySelectorAll('.ed-group:not([data-group-mode])').forEach(el=>{
     el.setAttribute('data-group-mode', el.classList.contains('ed-group-frame')?'frame':'card');
   });
-}catch(e){}
-/* Save As 후 새 파일로 이동해도 편집 흐름이 끊기지 않도록 editor mode 복구 */
-try{
-  const reopenPath=localStorage.getItem('ed_reopen_editor_path');
-  if(reopenPath&&typeof _getFilePath==='function'&&reopenPath===_getFilePath()){
-    localStorage.removeItem('ed_reopen_editor_path');
-    setTimeout(()=>{if(!isEd())toggle();},0);
-  }
 }catch(e){}
 /* Always init guide on load and on resize */
 upGuide();

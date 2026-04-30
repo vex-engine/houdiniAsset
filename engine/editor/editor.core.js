@@ -64,14 +64,8 @@ function ensureEditorShellDOM(){
       + '<button onclick="EA.saveAs&&EA.saveAs()" title="저장 위치 선택">Save As</button>'
       + '<button onclick="EA.exportHTML&&EA.exportHTML()" title="Ctrl+Shift+S">Export</button>'
       + '<button class="fb-reset" onclick="EA.resetAll&&EA.resetAll()">Reset</button>'
-      + '<button class="fb-exit" onclick="EA.toggle&&EA.toggle()">Edit Mode Out</button>'
-      + '<span class="ed-server-status" data-state="checking">SERVER CHECK...</span>';
+      + '<button class="fb-exit" onclick="EA.toggle&&EA.toggle()">Edit Mode Out</button>';
     body.insertBefore(bar,body.firstChild);
-  }
-  updateEditorServerStatus();
-  if(!window._edServerStatusTimer){
-    window._edServerStatusTimer=setInterval(updateEditorServerStatus,10000);
-    document.addEventListener('visibilitychange',()=>{if(!document.hidden)updateEditorServerStatus()});
   }
   let nav=document.querySelector('.ed-nav');
   if(!nav){
@@ -185,43 +179,6 @@ function ensureEditorShellDOM(){
       snap.className='ed-snap-v';
       snap.id='edSnapV';
       overlayParent.appendChild(snap);
-    }
-  }
-}
-
-async function updateEditorServerStatus(){
-  const el=document.querySelector('.ed-server-status');
-  if(!el)return;
-  const isFile=location.protocol==='file:';
-  const isLocalhost=/^(localhost|127\.0\.0\.1)$/i.test(location.hostname||'');
-  el.dataset.state='checking';
-  el.textContent='SERVER CHECK...';
-  try{
-    const r=await fetch(CFG.SAVE_API+'/ping',{signal:AbortSignal.timeout(900)});
-    const j=await r.json();
-    if(!j||!j.ok)throw new Error('bad ping');
-    if(isFile){
-      el.dataset.state='warn';
-      el.textContent='FILE MODE: Save 가능 / Export는 localhost 필요';
-      el.title='서버는 켜져 있지만 file://에서는 Export가 제한됩니다. 서버가 연 http://localhost:3000 경로에서 열면 Save/Export가 안정적으로 동작합니다.';
-    }else if(isLocalhost){
-      el.dataset.state='ok';
-      el.textContent='SERVER OK: Save / Export 가능';
-      el.title='서버시작.bat의 정적 서버와 저장 API가 연결되었습니다.';
-    }else{
-      el.dataset.state='warn';
-      el.textContent='REMOTE MODE: 로컬 저장 제한';
-      el.title='로컬 저장/Export는 localhost 환경을 기준으로 설계되어 있습니다.';
-    }
-  }catch(e){
-    if(isFile){
-      el.dataset.state='danger';
-      el.textContent='TEMP MODE: 서버시작.bat 필요';
-      el.title='현재 file:// 임시 편집 상태입니다. Save는 localStorage 임시 보관만 가능하고, Save As/Export는 서버시작.bat 실행 후 localhost에서 사용해야 합니다.';
-    }else{
-      el.dataset.state='danger';
-      el.textContent='SERVER OFF: Save / Export 제한';
-      el.title='localhost:3001 저장 API에 연결할 수 없습니다. 서버시작.bat을 실행하세요.';
     }
   }
 }
@@ -418,10 +375,37 @@ function upGuide(){
   const sf=deck.parentElement;
   const dr=deck.getBoundingClientRect();
   const fr=sf.getBoundingClientRect();
-  guide.style.left=(dr.left-fr.left)+'px';
-  guide.style.top=(dr.top-fr.top)+'px';
-  guide.style.width=dr.width+'px';
-  guide.style.height=dr.height+'px';
+  const left=dr.left-fr.left,top=dr.top-fr.top;
+  const fitBox=el=>{
+    if(!el)return;
+    el.style.left=left+'px';
+    el.style.top=top+'px';
+    el.style.width=dr.width+'px';
+    el.style.height=dr.height+'px';
+    el.style.right='auto';
+    el.style.bottom='auto';
+  };
+  fitBox(guide);
+  fitBox(gridEl);
+  const crossH=sf.querySelector('.ed-crosshair-h');
+  const crossV=sf.querySelector('.ed-crosshair-v');
+  if(crossH){
+    crossH.style.left=left+'px';
+    crossH.style.top=(top+dr.height/2)+'px';
+    crossH.style.width=dr.width+'px';
+    crossH.style.right='auto';
+  }
+  if(crossV){
+    crossV.style.left=(left+dr.width/2)+'px';
+    crossV.style.top=top+'px';
+    crossV.style.height=dr.height+'px';
+    crossV.style.bottom='auto';
+  }
+  if(gridEl&&$('edGridSize')){
+    const sz=+$('edGridSize').value||50;
+    const sc=(window.pAPI&&pAPI.deckScale)||1;
+    gridEl.style.backgroundSize=(sz*sc)+'px '+(sz*sc)+'px';
+  }
   guide._r={x:0,y:0,w:CFG.CANVAS_W,h:CFG.CANVAS_H};
 }
 function upGrid(){
@@ -429,7 +413,8 @@ function upGrid(){
   $('edGridAlphaVal').textContent=a+'%';
   const rgb=col.match(/[0-9a-f]{2}/gi).map(v=>parseInt(v,16));
   gridEl.style.backgroundImage=`linear-gradient(rgba(${rgb},${a/100}) 1px,transparent 1px),linear-gradient(90deg,rgba(${rgb},${a/100}) 1px,transparent 1px)`;
-  gridEl.style.backgroundSize=sz+'px '+sz+'px';
+  const sc=(window.pAPI&&pAPI.deckScale)||1;
+  gridEl.style.backgroundSize=(sz*sc)+'px '+(sz*sc)+'px';
 }
 
 /* ============================================================
@@ -959,30 +944,72 @@ function wrapMedia(el){
   _attachCropHandles(w);
   return w;
 }
-function _pointToDeckCanvas(e){
-  if(!e||!deck||!deck.getBoundingClientRect)return null;
-  const r=deck.getBoundingClientRect();
-  const sc=(window.pAPI&&pAPI.deckScale)||1;
+function _mediaDropPointFromClient(opts,slide){
+  if(!opts||typeof opts.dropClientX!=='number'||typeof opts.dropClientY!=='number'||!slide)return null;
+  const r=slide.getBoundingClientRect();
+  const scX=r.width/(slide.offsetWidth||CFG.CANVAS_W||r.width)||((window.pAPI&&pAPI.deckScale)||1);
+  const scY=r.height/(slide.offsetHeight||CFG.CANVAS_H||r.height)||((window.pAPI&&pAPI.deckScale)||1);
   return {
-    x:(e.clientX-r.left)/sc,
-    y:(e.clientY-r.top)/sc
+    x:(opts.dropClientX-r.left)/scX,
+    y:(opts.dropClientY-r.top)/scY
   };
 }
-function _placeMediaAtCanvasPoint(w,pt,offset){
+function _mediaCanvasScale(slide){
+  if(!slide||!slide.getBoundingClientRect)return {x:(window.pAPI&&pAPI.deckScale)||1,y:(window.pAPI&&pAPI.deckScale)||1};
+  const r=slide.getBoundingClientRect();
+  const sx=r.width/(slide.offsetWidth||CFG.CANVAS_W||r.width);
+  const sy=r.height/(slide.offsetHeight||CFG.CANVAS_H||r.height);
+  const fallback=(window.pAPI&&pAPI.deckScale)||1;
+  return {x:sx||fallback,y:sy||fallback};
+}
+function _mediaCanvasSize(w,slide){
+  const m=w&&w.querySelector&&w.querySelector('img,video,iframe');
+  const target=m||w;
+  if(!target)return {w:0,h:0};
+  const sc=_mediaCanvasScale(slide||w.closest&&w.closest('.slide'));
+  const r=target.getBoundingClientRect&&target.getBoundingClientRect();
+  let mw=r&&r.width? r.width/sc.x : 0;
+  let mh=r&&r.height? r.height/sc.y : 0;
+  if(!mw)mw=target.offsetWidth||0;
+  if(!mh)mh=target.offsetHeight||0;
+  return {w:mw,h:mh};
+}
+function _refreshDropPlacedMedia(w,pt,slide){
   if(!w||!pt)return;
-  const o=offset||0;
+  const sz=_mediaCanvasSize(w,slide);
   w.style.position='absolute';
-  w.style.left=Math.round(pt.x+o)+'px';
-  w.style.top=Math.round(pt.y+o)+'px';
   w.style.transform='none';
+  w.style.left=Math.round(pt.x-(sz.w||0)/2)+'px';
+  w.style.top=Math.round(pt.y-(sz.h||0)/2)+'px';
+  if(typeof syncSelectionOverlay==='function')syncSelectionOverlay();
+}
+function _placeMediaAtDropPoint(w,pt){
+  if(!w||!pt)return;
+  const slide=w.closest&&w.closest('.slide');
+  const media=w.querySelector&&w.querySelector('img,video,iframe');
+  const refresh=()=>requestAnimationFrame(()=>_refreshDropPlacedMedia(w,pt,slide));
+  w.style.position='absolute';
+  w.style.left=Math.round(pt.x)+'px';
+  w.style.top=Math.round(pt.y)+'px';
+  w.style.transform='none';
+  refresh();
+  if(!media)return;
+  if(media.tagName==='IMG'){
+    if(media.complete&&media.naturalWidth)refresh();
+    else media.addEventListener('load',refresh,{once:true});
+  }else if(media.tagName==='VIDEO'){
+    if(media.readyState>=1&&(media.videoWidth||media.offsetWidth))refresh();
+    else media.addEventListener('loadedmetadata',refresh,{once:true});
+  }else{
+    media.addEventListener('load',refresh,{once:true});
+  }
 }
 function addMedia(m,opts){
-  opts=opts||{};
   push();const s=curSlide();const w=wrapMedia(m);
   /* Insert before speaker-notes or at end of slide */
   const n=s.querySelector('.speaker-notes');if(n)n.before(w);else s.appendChild(w);
-  /* Default is center via CSS. Drag/drop passes canvas coords and is placed at mouse-up point. */
-  if(opts.point)_placeMediaAtCanvasPoint(w,opts.point,opts.offset||0);
+  /* Position: center of slide by default (CSS transform), user can drag to move */
+  _placeMediaAtDropPoint(w,_mediaDropPointFromClient(opts,s));
   /* 자동 data-step 배정: 삽입 직후엔 중앙 위치라 일단 슬라이드의 현재 max step + 1 부여.
      사용자가 위치 옮긴 뒤 '재정렬' 버튼으로 Y좌표 기준 재배정 가능. */
   let maxStep=0;
@@ -1102,9 +1129,85 @@ fVid.onchange=()=>{const f=fVid.files[0];if(!f)return;_insertVideoFromFile(f,'fi
 
 const sf=document.querySelector('.slide-frame');
 
+function _edViewportBusy(){
+  if(document.querySelector('.ed-dragging,.ed-resizing'))return true;
+  return document.body.classList.contains('ed-media-scaling')||
+         document.body.classList.contains('ed-cropping');
+}
+function _edRefreshViewportOverlays(){
+  if(typeof upGuide==='function')upGuide();
+  if(typeof syncSelectionOverlay==='function')syncSelectionOverlay();
+}
+function _edWheelDelta(e){
+  let dy=e.deltaY||0;
+  if(e.deltaMode===1)dy*=16;
+  else if(e.deltaMode===2)dy*=(sf&&sf.clientHeight)||800;
+  return dy;
+}
+
+/* Edit viewport: wheel zooms the canvas view; PageUp/PageDown still move slides. */
+sf.addEventListener('wheel',e=>{
+  if(!isEd())return;
+  const t=e.target;
+  if(t&&t.closest&&t.closest('[contenteditable="true"]'))return;
+  if(_edViewportBusy())return;
+  if(document.activeElement&&(
+    document.activeElement.tagName==='INPUT'||
+    document.activeElement.tagName==='TEXTAREA'||
+    document.activeElement.tagName==='SELECT'
+  ))return;
+  if(!window.pAPI||typeof pAPI.zoomEditViewAt!=='function')return;
+  e.preventDefault();
+  const dy=_edWheelDelta(e);
+  if(Math.abs(dy)<.5)return;
+  pAPI.zoomEditViewAt(e.clientX,e.clientY,Math.exp(-dy*.0015));
+  _edRefreshViewportOverlays();
+},{passive:false});
+
+let _edPanMove=null,_edPanUp=null;
+function _edStopCanvasPan(){
+  if(_edPanMove)document.removeEventListener('mousemove',_edPanMove,true);
+  if(_edPanUp)document.removeEventListener('mouseup',_edPanUp,true);
+  _edPanMove=null;_edPanUp=null;
+  document.body.classList.remove('ed-canvas-panning');
+}
+function _edStartCanvasPan(e){
+  if(!isEd()||e.button!==1||_edViewportBusy())return;
+  if(!window.pAPI||typeof pAPI.panEditViewBy!=='function')return;
+  e.preventDefault();
+  e.stopPropagation();
+  let lastX=e.clientX,lastY=e.clientY;
+  document.body.classList.add('ed-canvas-panning');
+  _edPanMove=ev=>{
+    ev.preventDefault();
+    const dx=ev.clientX-lastX,dy=ev.clientY-lastY;
+    lastX=ev.clientX;lastY=ev.clientY;
+    pAPI.panEditViewBy(dx,dy);
+    _edRefreshViewportOverlays();
+  };
+  _edPanUp=ev=>{
+    ev.preventDefault();
+    ev.stopPropagation();
+    _edStopCanvasPan();
+  };
+  document.addEventListener('mousemove',_edPanMove,true);
+  document.addEventListener('mouseup',_edPanUp,true);
+}
+sf.addEventListener('mousedown',e=>{
+  if(e.button===1)_edStartCanvasPan(e);
+},true);
+document.addEventListener('auxclick',e=>{
+  if(!isEd()||e.button!==1)return;
+  if(e.target&&e.target.closest&&e.target.closest('.slide-frame')){
+    e.preventDefault();
+    e.stopPropagation();
+  }
+},true);
+window.addEventListener('blur',_edStopCanvasPan);
+
 /* Wheel navigation — edit mode: 마우스 휠로 슬라이드 이동 + 사이드바 동기화 */
 let _edWheelLock=0,_edWheelAcc=0;
-sf.addEventListener('wheel',e=>{
+sf.addEventListener('wheel',e=>{return;
   if(!isEd())return;
   /* 텍스트 편집 중엔 스크롤을 방해하지 않음 */
   const t=e.target;
@@ -1133,14 +1236,10 @@ sf.addEventListener('wheel',e=>{
 sf.addEventListener('dragover',e=>{if(!isEd())return;e.preventDefault();e.dataTransfer.dropEffect='copy'});
 sf.addEventListener('drop',e=>{
   if(!isEd())return;e.preventDefault();
-  const pt=_pointToDeckCanvas(e);
-  let mediaIndex=0;
+  const dropOpts={dropClientX:e.clientX,dropClientY:e.clientY};
   for(const f of e.dataTransfer.files){
-    if(!f.type||!f.type.match(/^(image|video)\//))continue;
-    const opts={point:pt,offset:mediaIndex*24};
-    if(f.type.startsWith('image/'))_insertImageFromFile(f,'drop-file',opts);
-    else if(f.type.startsWith('video/'))_insertVideoFromFile(f,'drop-file',opts);
-    mediaIndex++;
+    if(f.type.startsWith('image/'))_insertImageFromFile(f,'drop-file',dropOpts);
+    else if(f.type.startsWith('video/'))_insertVideoFromFile(f,'drop-file',dropOpts);
   }
 });
 document.addEventListener('paste',e=>{

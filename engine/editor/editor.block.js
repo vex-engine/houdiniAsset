@@ -819,6 +819,44 @@ function _blockBoxInSlide(el,slide,sc){
     h:r.height/sc
   };
 }
+function _snapIsTextEl(el){
+  return !!(el&&el.matches&&el.matches(BLOCK.TEXT_TAGS_SEL));
+}
+function _snapTextBoxInSlide(el,slide,sc){
+  if(!_snapIsTextEl(el)||!el.textContent||!el.textContent.trim())return null;
+  let range=null;
+  try{
+    range=document.createRange();
+    range.selectNodeContents(el);
+    const sr=slide.getBoundingClientRect();
+    const rects=[...range.getClientRects()].filter(r=>r&&r.width>0&&r.height>0);
+    if(!rects.length)return null;
+    const l=Math.min(...rects.map(r=>r.left));
+    const t=Math.min(...rects.map(r=>r.top));
+    const r=Math.max(...rects.map(r=>r.right));
+    const b=Math.max(...rects.map(r=>r.bottom));
+    return {
+      x:(l-sr.left)/sc,
+      y:(t-sr.top)/sc,
+      w:(r-l)/sc,
+      h:(b-t)/sc
+    };
+  }catch(e){
+    return null;
+  }finally{
+    if(range)range.detach&&range.detach();
+  }
+}
+function _snapBoxesForEl(el,slide,sc,includeText){
+  const boxes=[];
+  const blockBox=_blockBoxInSlide(el,slide,sc);
+  if(blockBox&&isFinite(blockBox.x)&&isFinite(blockBox.y)&&blockBox.w>0&&blockBox.h>0)boxes.push(blockBox);
+  if(includeText){
+    const textBox=_snapTextBoxInSlide(el,slide,sc);
+    if(textBox&&isFinite(textBox.x)&&isFinite(textBox.y)&&textBox.w>0&&textBox.h>0)boxes.push(textBox);
+  }
+  return boxes;
+}
 
 function _applyAbsoluteBlockBox(el,box){
   el.style.position='absolute';
@@ -887,16 +925,221 @@ function cloneBlockForDuplicate(source){
   return c;
 }
 
-/* Space/직접 드래그로 블럭 이동 시작 */
-function startMoveDrag(anchorBlock, e){
+/* Shared snapping and move/duplicate drag behavior */
+/* ============================================================
+   SNAP ENGINE -- shared object smart guides for all move drags
+   ============================================================ */
+function snapEnd(){
+  if(typeof snapH!=='undefined'&&snapH)snapH.style.display='none';
+  if(typeof snapV!=='undefined'&&snapV)snapV.style.display='none';
+}
+function _snapUnionBox(boxes){
+  const valid=(boxes||[]).filter(b=>b&&isFinite(b.x)&&isFinite(b.y)&&isFinite(b.w)&&isFinite(b.h));
+  if(!valid.length)return null;
+  const l=Math.min(...valid.map(b=>b.x));
+  const t=Math.min(...valid.map(b=>b.y));
+  const r=Math.max(...valid.map(b=>b.x+b.w));
+  const b=Math.max(...valid.map(b=>b.y+b.h));
+  return {x:l,y:t,w:r-l,h:b-t};
+}
+function _snapLinesForBox(box){
+  return {
+    x:[box.x,box.x+box.w/2,box.x+box.w],
+    y:[box.y,box.y+box.h/2,box.y+box.h]
+  };
+}
+function _snapIsRelated(candidate,moving){
+  return moving.some(el=>el&&(
+    el===candidate ||
+    (el.contains&&el.contains(candidate)) ||
+    (candidate.contains&&candidate.contains(el))
+  ));
+}
+function _snapScopeFor(slide,movingEls){
+  const parents=[...new Set((movingEls||[]).map(el=>el&&el.parentElement).filter(Boolean))];
+  if(parents.length===1&&parents[0]!==slide&&slide.contains(parents[0]))return parents[0];
+  return slide;
+}
+function _snapCandidateEls(root,movingEls,includeText){
+  const moving=[...new Set((movingEls||[]).filter(Boolean))];
+  const selector=includeText ? BLOCK.TARGET_SEL+', '+BLOCK.TEXT_TAGS_SEL : BLOCK.TARGET_SEL;
+  return [...root.querySelectorAll(selector)].filter(el=>{
+    if(!el||_snapIsRelated(el,moving))return false;
+    if(el.closest&&el.closest('.speaker-notes'))return false;
+    if(el.matches&&el.matches(BLOCK.ARTIFACT_SEL))return false;
+    if(el.closest&&el.closest(BLOCK.ARTIFACT_SEL))return false;
+    if(typeof isBlock==='function'&&!isBlock(el))return false;
+    const r=el.getBoundingClientRect();
+    return r.width>0&&r.height>0;
+  });
+}
+function _snapBest(movingLines,targetLines){
+  let best=null;
+  movingLines.forEach(m=>{
+    targetLines.forEach(line=>{
+      const delta=line-m;
+      const dist=Math.abs(delta);
+      if(dist<=CFG.SNAP_PX&&(!best||dist<best.dist)){
+        best={delta,line,dist};
+      }
+    });
+    });
+  return best;
+}
+function _snapLinesForBoxes(boxes){
+  const lines={x:[],y:[]};
+  (boxes||[]).forEach(b=>{
+    const l=_snapLinesForBox(b);
+    lines.x.push(...l.x);
+    lines.y.push(...l.y);
+  });
+  return lines;
+}
+function _snapOffsetBoxes(boxes,dx,dy){
+  return (boxes||[]).map(b=>({x:b.x+dx,y:b.y+dy,w:b.w,h:b.h}));
+}
+function _snapAxis(movingLines,objectLines,canvasLine){
+  const objectBest=_snapBest(movingLines,objectLines);
+  if(objectBest)return objectBest;
+  if(isFinite(canvasLine)){
+    const canvasBest=_snapBest(movingLines,[canvasLine]);
+    if(canvasBest)return canvasBest;
+  }
+  return null;
+}
+function _axisLockState(e){
+  return {
+    active:false,
+    axis:null,
+    initialShift:!!(e&&e.shiftKey),
+    shiftReleased:!(e&&e.shiftKey),
+    lockDx:0,
+    lockDy:0
+  };
+}
+function _axisLockApply(dx,dy,ev,state){
+  if(!state||!ev||!ev.shiftKey){
+    if(state){
+      state.active=false;
+      state.axis=null;
+      state.shiftReleased=true;
+    }
+    return {dx,dy,axis:null};
+  }
+  if(!state.active){
+    state.active=true;
+    state.axis=Math.abs(dx)>=Math.abs(dy)?'x':'y';
+    const fromDragStart=state.initialShift&&!state.shiftReleased;
+    state.lockDx=fromDragStart?0:dx;
+    state.lockDy=fromDragStart?0:dy;
+  }
+  if(state.axis==='x')dy=state.lockDy;
+  else if(state.axis==='y')dx=state.lockDx;
+  return {dx,dy,axis:state.axis};
+}
+function _snapGuideMetrics(){
+  if(typeof guide==='undefined'||!guide)return null;
+  return {
+    left:parseFloat(guide.style.left)||0,
+    top:parseFloat(guide.style.top)||0,
+    width:parseFloat(guide.style.width)||CFG.CANVAS_W,
+    height:parseFloat(guide.style.height)||CFG.CANVAS_H
+  };
+}
+function _snapVisualX(x){
+  if(typeof snapV!=='undefined'&&snapV&&snapV.parentElement===deck)return x;
+  const g=_snapGuideMetrics();
+  return g ? g.left + x * (g.width / CFG.CANVAS_W) : x;
+}
+function _snapVisualY(y){
+  if(typeof snapH!=='undefined'&&snapH&&snapH.parentElement===deck)return y;
+  const g=_snapGuideMetrics();
+  return g ? g.top + y * (g.height / CFG.CANVAS_H) : y;
+}
+function _showSnapV(x){
+  if(typeof snapV==='undefined'||!snapV)return;
+  const g=_snapGuideMetrics();
+  snapV.style.left=Math.round(_snapVisualX(x))+'px';
+  if(snapV.parentElement!==deck&&g){
+    snapV.style.top=Math.round(g.top)+'px';
+    snapV.style.height=Math.round(g.height)+'px';
+    snapV.style.bottom='auto';
+  }
+  snapV.style.display='block';
+}
+function _showSnapH(y){
+  if(typeof snapH==='undefined'||!snapH)return;
+  const g=_snapGuideMetrics();
+  snapH.style.top=Math.round(_snapVisualY(y))+'px';
+  if(snapH.parentElement!==deck&&g){
+    snapH.style.left=Math.round(g.left)+'px';
+    snapH.style.width=Math.round(g.width)+'px';
+    snapH.style.right='auto';
+  }
+  snapH.style.display='block';
+}
+function snapBegin(opts){
+  const slide=opts&&opts.slide;
+  const movingEls=(opts&&opts.movingEls)||[];
+  const sc=(window.pAPI&&pAPI.deckScale)||1;
+  if(!slide||!movingEls.length)return null;
+  const movingBoxes=movingEls.map(el=>_blockBoxInSlide(el,slide,sc));
+  const box=_snapUnionBox(movingBoxes);
+  if(!box)return null;
+  const useTextSnap=movingEls.some(el=>_snapIsTextEl(el));
+  const movingSnapBoxes=movingEls.flatMap(el=>_snapBoxesForEl(el,slide,sc,useTextSnap));
+  const scope=_snapScopeFor(slide,movingEls);
+  let candidateEls=_snapCandidateEls(scope,movingEls,useTextSnap);
+  if(!candidateEls.length&&scope!==slide)candidateEls=_snapCandidateEls(slide,movingEls,useTextSnap);
+  const candidates=candidateEls
+    .flatMap(el=>_snapBoxesForEl(el,slide,sc,useTextSnap))
+    .filter(b=>b&&isFinite(b.x)&&isFinite(b.y)&&b.w>0&&b.h>0);
+  const objectX=[],objectY=[];
+  candidates.forEach(b=>{
+    const lines=_snapLinesForBox(b);
+    objectX.push(...lines.x);
+    objectY.push(...lines.y);
+  });
+  const gr=(typeof guide!=='undefined'&&guide&&guide._r)?guide._r:null;
+  return {
+    slide,
+    box,
+    movingSnapBoxes:movingSnapBoxes.length?movingSnapBoxes:movingBoxes,
+    objectX,
+    objectY,
+    canvasX:gr?gr.x+gr.w/2:NaN,
+    canvasY:gr?gr.y+gr.h/2:NaN
+  };
+}
+function snapApply(session,dx,dy,ev,axisLock){
+  if(!session||ev&&ev.ctrlKey){
+    snapEnd();
+    return {dx,dy};
+  }
+  const lines=_snapLinesForBoxes(_snapOffsetBoxes(session.movingSnapBoxes||[session.box],dx,dy));
+  const sx=axisLock==='y'?null:_snapAxis(lines.x,session.objectX,session.canvasX);
+  const sy=axisLock==='x'?null:_snapAxis(lines.y,session.objectY,session.canvasY);
+  if(sx){
+    dx+=sx.delta;
+    _showSnapV(sx.line);
+  }else if(typeof snapV!=='undefined'&&snapV)snapV.style.display='none';
+  if(sy){
+    dy+=sy.delta;
+    _showSnapH(sy.line);
+  }else if(typeof snapH!=='undefined'&&snapH)snapH.style.display='none';
+  return {dx,dy};
+}
+
+function startMoveDrag(anchorBlock, e, opts){
   if(!anchorBlock)return;
   /* 이동 대상 목록: 다중 선택이면 전부, 아니면 anchorBlock 하나 */
   const targets = selBlocks.length>1 ? [...selBlocks] : [anchorBlock];
   const sc = pAPI.deckScale;
   const sX = e.clientX, sY = e.clientY;
+  const axisLock=_axisLockState(e);
   /* 각 블럭의 초기 상태는 실제 드래그가 시작될 때만 만든다.
      단순 클릭에서 position/left/top 같은 DOM 상태가 바뀌면 안 된다. */
-  let initial = [];
+  let initial = [], snapSession=null;
   let started=false;
   const start=()=>{
     if(started)return;
@@ -906,6 +1149,8 @@ function startMoveDrag(anchorBlock, e){
     /* media-wrap 이 최초 이동일 때 transform 중앙 정렬을 px 좌표로 변환해야
        oL/oT 가 올바르게 잡혀서 점핑이 사라진다. */
     initial = targets.map(b=>_prepareBlockForMove(b,sc));
+    const slide=(anchorBlock.closest&&anchorBlock.closest('.slide'))||curSlide();
+    snapSession=snapBegin({slide,movingEls:targets});
     moveInProgress=true;
     suppressNextSelect=true;
     if(typeof startOverlayLoop==='function')startOverlayLoop();
@@ -913,11 +1158,15 @@ function startMoveDrag(anchorBlock, e){
   };
 
   const mv = ev=>{
-    const dx=(ev.clientX-sX)/sc, dy=(ev.clientY-sY)/sc;
+    let dx=(ev.clientX-sX)/sc, dy=(ev.clientY-sY)/sc;
     if(!started){
       if(Math.hypot(ev.clientX-sX,ev.clientY-sY)<3)return;
       start();
     }
+    const locked=_axisLockApply(dx,dy,ev,axisLock);
+    dx=locked.dx;dy=locked.dy;
+    const snapped=snapApply(snapSession,dx,dy,ev,locked.axis);
+    dx=snapped.dx;dy=snapped.dy;
     initial.forEach(({el,oL,oT})=>{
       el.style.left=(oL+dx)+'px';
       el.style.top=(oT+dy)+'px';
@@ -928,6 +1177,7 @@ function startMoveDrag(anchorBlock, e){
     targets.forEach(b=>b.classList.remove('ed-dragging'));
     document.removeEventListener('mousemove',mv);
     document.removeEventListener('mouseup',up);
+    snapEnd(snapSession);
     if(typeof syncSelectionOverlay==='function')syncSelectionOverlay();
     if(started){
       if(window.pAPI&&window.pAPI.reinit)window.pAPI.reinit();
@@ -939,6 +1189,7 @@ function startMoveDrag(anchorBlock, e){
   };
   document.addEventListener('mousemove',mv);
   document.addEventListener('mouseup',up);
+  if(opts&&opts.initialMoveEvent)mv(opts.initialMoveEvent);
   e.preventDefault();
 }
 
@@ -947,7 +1198,8 @@ function startDuplicateDrag(anchorBlock,e){
   if(!anchorBlock)return;
   const sc=pAPI.deckScale;
   const sX=e.clientX,sY=e.clientY;
-  let clone=null, initial=null, started=false;
+  const axisLock=_axisLockState(e);
+  let clone=null, initial=null, snapSession=null, started=false;
   const start=()=>{
     if(started)return;
     started=true;
@@ -958,6 +1210,7 @@ function startDuplicateDrag(anchorBlock,e){
     const placed=placeDuplicateBlockAtSource(anchorBlock,clone,0,0);
     if(!placed)return;
     initial={el:clone,oL:placed.box.x,oT:placed.box.y};
+    snapSession=snapBegin({slide:placed.slide,movingEls:[clone]});
     clone.style.left=initial.oL+'px';
     clone.style.top=initial.oT+'px';
     clone.classList.add('ed-dragging');
@@ -971,7 +1224,11 @@ function startDuplicateDrag(anchorBlock,e){
       start();
     }
     if(!clone||!initial)return;
-    const dx=(ev.clientX-sX)/sc,dy=(ev.clientY-sY)/sc;
+    let dx=(ev.clientX-sX)/sc,dy=(ev.clientY-sY)/sc;
+    const locked=_axisLockApply(dx,dy,ev,axisLock);
+    dx=locked.dx;dy=locked.dy;
+    const snapped=snapApply(snapSession,dx,dy,ev,locked.axis);
+    dx=snapped.dx;dy=snapped.dy;
     clone.style.left=(initial.oL+dx)+'px';
     clone.style.top=(initial.oT+dy)+'px';
     if(typeof syncSelectionOverlay==='function')syncSelectionOverlay();
@@ -979,6 +1236,7 @@ function startDuplicateDrag(anchorBlock,e){
   const up=()=>{
     document.removeEventListener('mousemove',mv);
     document.removeEventListener('mouseup',up);
+    snapEnd(snapSession);
     if(clone)clone.classList.remove('ed-dragging');
     if(started){
       attachHandles&&attachHandles();on&&on();

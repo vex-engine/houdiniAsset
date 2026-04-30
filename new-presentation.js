@@ -1,7 +1,7 @@
 // ============================================================
 //  새 프레젠테이션 브리프 생성기
 //  - 대화형 질문 5개로 _brief.md 파일 생성
-//  - Codex에 전달할 지시문을 클립보드에 자동 복사
+//  - Claude에 전달할 지시문을 클립보드에 자동 복사
 // ============================================================
 
 const fs = require('fs');
@@ -109,7 +109,7 @@ async function main() {
     refExists = fs.existsSync(abs);
     if (!refExists) {
       console.log(`  ! 경고: 경로에서 파일을 찾지 못했습니다 → ${abs}`);
-      console.log('  ! 브리프에는 기록하되, Codex가 확인하도록 표시해둡니다.');
+      console.log('  ! 브리프에는 기록하되, Claude가 확인하도록 표시해둡니다.');
     }
   }
 
@@ -148,7 +148,7 @@ async function main() {
 | 톤 | ${tone} |
 | 참고자료 | ${hasRef ? refPath + (refExists ? '' : ' (⚠ 파일 없음)') : '없음 → 자동 생성'} |
 
-## Codex 작업 지시
+## Claude 작업 지시
 
 1. \`engine/template.html\`을 복사해서 \`presentations/${finalSlug}/${finalSlug}.html\` 로 시작한다.
 2. 위 입력값을 기준으로 **먼저 목차(제안 슬라이드 수 포함)를 제시**하고 사용자 확인을 받는다.
@@ -159,7 +159,7 @@ async function main() {
    - 인라인 스타일 유지 (\`position:relative\` 강제 패턴)
    - base64/blob 금지, 파일 참조만
 
-## 슬라이드 밀도 가이드 (Codex 참고)
+## 슬라이드 밀도 가이드 (Claude 참고)
 
 - 강의형: 약 ${Math.max(1, Math.round(duration / 2))}장 기준 (2분/장)
 - 세미나형: 약 ${Math.max(1, Math.round(duration / 3))}장 (3분/장, 토론 여유)
@@ -172,10 +172,10 @@ async function main() {
   const briefPath = path.join(finalFolder, '_brief.md');
   fs.writeFileSync(briefPath, brief, 'utf8');
 
-  // ---------- Codex 지시문 (클립보드) ----------
-  const codexInstruction = `새 발표 만들어줘. presentations/${finalSlug}/_brief.md 읽고 먼저 목차랑 예상 슬라이드 수 제안해줘. 내가 확인하면 engine/template.html 기반으로 HTML 생성까지 진행해줘.`;
+  // ---------- Claude 지시문 (클립보드) ----------
+  const claudeInstruction = `presentations/${finalSlug}/_brief.md 읽고 슬라이드 만들어줘. 먼저 목차랑 예상 슬라이드 수 제안하고 내 확인 받은 다음에 HTML 생성해.`;
 
-  const clipOk = await copyToClipboard(codexInstruction);
+  const clipOk = await copyToClipboard(claudeInstruction);
 
   // ---------- 결과 출력 ----------
   console.log('');
@@ -186,14 +186,14 @@ async function main() {
   console.log(`   파일: presentations/${finalSlug}/_brief.md`);
   console.log('');
   if (clipOk) {
-    console.log('   ✓ Codex 지시문이 클립보드에 복사되었습니다.');
-    console.log('     → Codex 편집창에서 Ctrl+V 로 붙여넣기');
+    console.log('   ✓ Claude 지시문이 클립보드에 복사되었습니다.');
+    console.log('     → Claude 창에서 Ctrl+V 로 붙여넣기');
   } else {
     console.log('   ! 클립보드 복사 실패. 아래 문장을 직접 복사해 사용하세요:');
   }
   console.log('');
   console.log('   --------------------------------------------');
-  console.log(`   ${codexInstruction}`);
+  console.log(`   ${claudeInstruction}`);
   console.log('   --------------------------------------------');
   console.log('');
 

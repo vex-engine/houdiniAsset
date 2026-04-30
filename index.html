@@ -77,6 +77,29 @@ const ago = iso => {
   if(s<60) return 'now'; if(s<3600) return (s/60|0)+'m ago';
   if(s<86400) return (s/3600|0)+'h ago'; return (s/86400|0)+'d ago';
 };
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const commitTime = iso => {
+  if(!iso) return '';
+  const parts = new Intl.DateTimeFormat('sv-SE', {
+    timeZone: 'Asia/Seoul',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false
+  }).formatToParts(new Date(iso)).reduce((acc, p) => (acc[p.type] = p.value, acc), {});
+  return `${parts.year}-${parts.month}-${parts.day} ${parts.hour}:${parts.minute}`;
+};
+const gitLabel = info => {
+  if(!info) return '';
+  if(!info.gitAvailable || !info.gitCommitAt || !info.gitCommit){
+    const started = commitTime(info.serverStartedAt);
+    return started ? ` · 실행 ${esc(started)} · Git 정보 없음` : ' · Git 정보 없음';
+  }
+  const branch = info.gitBranch && info.gitBranch !== 'HEAD' ? info.gitBranch : 'detached';
+  return ` · ${esc(branch)}@${esc(info.gitCommit)} · 마지막 커밋 ${esc(commitTime(info.gitCommitAt))}`;
+};
 
 function renderList(listEl, items){
   if(!items || !items.length){ listEl.innerHTML='<div class="empty">없음</div>'; return; }
@@ -94,7 +117,7 @@ async function loadList(){
   try{
     const ping = await fetch(API+'/ping');
     const pj = await ping.json();
-    statusEl.innerHTML = '<div class="server-status ss-ok">● Save/Export API 정상 (v'+pj.version+')</div>';
+    statusEl.innerHTML = '<div class="server-status ss-ok">● Save/Export API 정상 (v'+esc(pj.version)+')'+gitLabel(pj)+'</div>';
   }catch(e){
     statusEl.innerHTML = '<div class="server-status ss-bad">✗ Save/Export API 응답 없음 — 서버시작.bat 재실행 필요</div>';
     return;
