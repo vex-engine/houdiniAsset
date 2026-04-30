@@ -746,6 +746,20 @@ function _cropClampSide(wrap,side,px){
   const lim=(side==='t'||side==='b')?Math.max(0,H-oppPx-1):Math.max(0,W-oppPx-1);
   return Math.min(lim,Math.max(0,px|0));
 }
+function _cropClampSymmetric(wrap,axis,px){
+  const m=wrap&&wrap.querySelector('img,video,iframe');
+  if(!m)return Math.max(0,px|0);
+  const W=m.offsetWidth||m.naturalWidth||0;
+  const H=m.offsetHeight||m.naturalHeight||0;
+  const lim=axis==='y'?Math.floor(Math.max(0,H-1)/2):Math.floor(Math.max(0,W-1)/2);
+  return Math.min(lim,Math.max(0,px|0));
+}
+function _cropSetPair(wrap,sides,v){
+  sides.forEach(side=>{
+    if(v)wrap.setAttribute('data-crop-'+side,v);
+    else wrap.removeAttribute('data-crop-'+side);
+  });
+}
 function _cropScale(wrap){
   const v=parseFloat(wrap&&wrap.getAttribute('data-crop-scale'));
   return isFinite(v)&&v>0?v:1;
@@ -897,7 +911,12 @@ function _attachCropHandles(wrap){
       push();
       const sc=(window.pAPI&&pAPI.deckScale)||1;
       const sx=e.clientX,sy=e.clientY;
-      const start=parseInt(wrap.getAttribute('data-crop-'+side),10)||0;
+      const pair=(side==='t'||side==='b')?['t','b']:['l','r'];
+      const axis=(side==='t'||side==='b')?'y':'x';
+      const start=Math.max(
+        parseInt(wrap.getAttribute('data-crop-'+pair[0]),10)||0,
+        parseInt(wrap.getAttribute('data-crop-'+pair[1]),10)||0
+      );
       document.body.classList.add('ed-cropping');
       const mv=ev=>{
         const dx=(ev.clientX-sx)/sc;
@@ -907,9 +926,8 @@ function _attachCropHandles(wrap){
         if(side==='b')delta=-dy;
         if(side==='l')delta=dx;
         if(side==='r')delta=-dx;
-        const v=_cropClampSide(wrap,side,start+delta);
-        if(v)wrap.setAttribute('data-crop-'+side,v);
-        else wrap.removeAttribute('data-crop-'+side);
+        const v=_cropClampSymmetric(wrap,axis,start+delta);
+        _cropSetPair(wrap,pair,v);
         _cropApply(wrap);
         if(window.PanelCtx&&PanelCtx._refreshCropUI)PanelCtx._refreshCropUI();
       };
