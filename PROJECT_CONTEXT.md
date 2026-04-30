@@ -29,6 +29,7 @@ This is the first follow-up document to read after `AGENTS.md`.
 
 - In editor mode, `body.editor-mode [data-step]{ transform:none!important }` overrides transforms on media wrappers because media wrappers also receive `data-step`.
 - For drop placement, compute `left/top` directly from the loaded media size rather than using `translate(-50%, -50%)`.
+- Do not show a newly dropped media wrapper at the raw drop point before size correction. Keep it hidden until centered `left/top` is applied, otherwise users see a one-frame jump from the upper-left placement to the cursor-centered placement.
 - Keep `apps` as the repository name. Do not rename the repository when the user asks about the PPTX project name.
 - `ㄱㄱ` means the user wants the previously discussed plan executed immediately.
 - The user may say "형"; concise Korean explanations are preferred for workflow clarification.
