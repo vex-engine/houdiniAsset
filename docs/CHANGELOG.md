@@ -4,6 +4,41 @@ PPTX 엔진 버전 기록. 최신 버전이 위.
 
 ---
 
+## v1.3.4 — 2026-04-30 22:12 KST (드래그 박스 다중 선택)
+
+> **Tag**: `marquee-block-selection-2026-04-30`
+>
+> **기준 커밋**: `135816d` — `Add marquee block selection`
+>
+> 에디트 모드에서 빈 작업창을 드래그해 여러 블럭을 한꺼번에 선택하고, Shift로 선택 범위를 누적할 수 있게 했다.
+
+### 드래그 박스 선택
+- 캔버스 빈 곳을 드래그하면 선택 박스가 표시되고, 박스와 겹치는 블럭들이 한꺼번에 선택된다.
+- 1920x1080 슬라이드 내부뿐 아니라 슬라이드 바깥 검은 작업창 영역에서도 같은 방식으로 선택을 시작할 수 있다.
+- 선택 박스는 화면 좌표 기준으로 표시하고, 블럭 판정은 현재 활성 슬라이드의 실제 렌더링 사각형과 교차 여부로 계산한다.
+
+### Shift 누적 선택
+- `Shift + 드래그 선택`은 기존 `selBlocks`를 유지한 채 새로 걸린 블럭을 합친다.
+- 기존 `Shift+클릭` 다중 선택, 선택 블럭 이동, 삭제, 그룹 흐름과 같은 선택 상태를 공유한다.
+
+### 텍스트 선택 방지
+- 박스 선택 시작 즉시 브라우저 기본 텍스트 선택을 지운다.
+- 드래그 중 `selectstart`를 임시 차단하고 `user-select` / `-webkit-user-select`를 끈다.
+- 드래그 종료 시 선택 박스와 임시 차단 상태를 정리한다.
+
+### 검증
+- `node --check engine/editor/editor.main.js`
+- `bash scripts/verify_engine.sh` — ALL GREEN
+
+### 변경 파일
+- `engine/editor/editor.block.js`
+- `engine/editor/editor.main.js`
+- `engine/engine.css`
+- `docs/VERSION.md`
+- `docs/CHANGELOG.md`
+
+---
+
 ## v1.3.3 — 2026-04-30 21:51 KST (프로젝트 컨텍스트 정리 + 미디어 드롭 위치 수정)
 
 > **Tag**: `pptx-project-context-and-media-drop-2026-04-30`
